@@ -298,7 +298,7 @@ pub fn create_local_var_metadata(bcx: &Block, local: &ast::Local) {
                 Some(datum) => datum,
                 None => {
                     bcx.tcx().sess.span_bug(span,
-                        format!("No entry in lllocals table for {:?}",
+                        format!("no entry in lllocals table for {:?}",
                                 node_id));
                 }
             }
@@ -440,7 +440,7 @@ pub fn create_argument_metadata(bcx: &Block, arg: &ast::Arg) {
                 Some(v) => v,
                 None => {
                     bcx.tcx().sess.span_bug(span,
-                        format!("No entry in llargs table for {:?}",
+                        format!("no entry in llargs table for {:?}",
                                 node_id));
                 }
             }
@@ -1779,7 +1779,7 @@ fn boxed_type_metadata(cx: &CrateContext,
             offset: ComputedMemberOffset,
         },
         MemberDescription {
-            name: ~"tydesc",
+            name: ~"drop_glue",
             llvm_type: member_llvm_types[1],
             type_metadata: nil_pointer_type_metadata,
             offset: ComputedMemberOffset,
@@ -1824,7 +1824,7 @@ fn boxed_type_metadata(cx: &CrateContext,
                           -> bool {
         member_llvm_types.len() == 5 &&
         member_llvm_types[0] == cx.int_type &&
-        member_llvm_types[1] == cx.tydesc_type.ptr_to() &&
+        member_llvm_types[1] == Type::generic_glue_fn(cx).ptr_to() &&
         member_llvm_types[2] == Type::i8().ptr_to() &&
         member_llvm_types[3] == Type::i8().ptr_to() &&
         member_llvm_types[4] == content_llvm_type

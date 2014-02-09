@@ -214,8 +214,7 @@ impl Arena {
     #[inline]
     fn alloc_pod<'a, T>(&'a mut self, op: || -> T) -> &'a T {
         unsafe {
-            let tydesc = get_tydesc::<T>();
-            let ptr = self.alloc_pod_inner((*tydesc).size, (*tydesc).align);
+            let ptr = self.alloc_pod_inner(mem::size_of::<T>(), mem::min_align_of::<T>());
             let ptr: *mut T = transmute(ptr);
             intrinsics::move_val_init(&mut (*ptr), op());
             return transmute(ptr);
@@ -272,7 +271,7 @@ impl Arena {
         unsafe {
             let tydesc = get_tydesc::<T>();
             let (ty_ptr, ptr) =
-                self.alloc_nonpod_inner((*tydesc).size, (*tydesc).align);
+                self.alloc_nonpod_inner(mem::size_of::<T>(), mem::min_align_of::<T>());
             let ty_ptr: *mut uint = transmute(ty_ptr);
             let ptr: *mut T = transmute(ptr);
             // Write in our tydesc along with a bit indicating that it
@@ -537,18 +536,18 @@ mod test {
                 x: 1,
                 y: 2,
                 z: 3,
-            });
+            })
         })
     }
 
     #[bench]
     pub fn bench_pod_nonarena(bh: &mut BenchHarness) {
         bh.iter(|| {
-            let _ = ~Point {
+            ~Point {
                 x: 1,
                 y: 2,
                 z: 3,
-            };
+            }
         })
     }
 
@@ -562,7 +561,7 @@ mod test {
                     y: 2,
                     z: 3,
                 }
-            });
+            })
         })
     }
 
@@ -589,17 +588,17 @@ mod test {
             arena.alloc(Nonpod {
                 string: ~"hello world",
                 array: ~[ 1, 2, 3, 4, 5 ],
-            });
+            })
         })
     }
 
     #[bench]
     pub fn bench_nonpod_nonarena(bh: &mut BenchHarness) {
         bh.iter(|| {
-            let _ = ~Nonpod {
+            ~Nonpod {
                 string: ~"hello world",
                 array: ~[ 1, 2, 3, 4, 5 ],
-            };
+            }
         })
     }
 
@@ -607,10 +606,10 @@ mod test {
     pub fn bench_nonpod_old_arena(bh: &mut BenchHarness) {
         let arena = Arena::new();
         bh.iter(|| {
-            let _ = arena.alloc(|| Nonpod {
+            arena.alloc(|| Nonpod {
                 string: ~"hello world",
                 array: ~[ 1, 2, 3, 4, 5 ],
-            });
+            })
         })
     }
 }

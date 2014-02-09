@@ -14,7 +14,7 @@ use ext::base::ExtCtxt;
 use ext::build::AstBuilder;
 use ext::deriving::generic::*;
 
-pub fn expand_deriving_clone(cx: &ExtCtxt,
+pub fn expand_deriving_clone(cx: &mut ExtCtxt,
                              span: Span,
                              mitem: @MetaItem,
                              in_items: ~[@Item])
@@ -42,7 +42,7 @@ pub fn expand_deriving_clone(cx: &ExtCtxt,
     trait_def.expand(mitem, in_items)
 }
 
-pub fn expand_deriving_deep_clone(cx: &ExtCtxt,
+pub fn expand_deriving_deep_clone(cx: &mut ExtCtxt,
                                   span: Span,
                                   mitem: @MetaItem,
                                   in_items: ~[@Item])
@@ -74,7 +74,7 @@ pub fn expand_deriving_deep_clone(cx: &ExtCtxt,
 
 fn cs_clone(
     name: &str,
-    cx: &ExtCtxt, trait_span: Span,
+    cx: &mut ExtCtxt, trait_span: Span,
     substr: &Substructure) -> @Expr {
     let clone_ident = substr.method_ident;
     let ctor_ident;
@@ -92,10 +92,10 @@ fn cs_clone(
             all_fields = af;
         },
         EnumNonMatching(..) => cx.span_bug(trait_span,
-                                           format!("Non-matching enum variants in `deriving({})`",
+                                           format!("non-matching enum variants in `deriving({})`",
                                                   name)),
         StaticEnum(..) | StaticStruct(..) => cx.span_bug(trait_span,
-                                                         format!("Static method in `deriving({})`",
+                                                         format!("static method in `deriving({})`",
                                                                  name))
     }
 
