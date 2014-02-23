@@ -26,11 +26,9 @@ Some examples of obvious things you might want to do
 * Read lines from stdin
 
     ```rust
-    use std::io::BufferedReader;
-    use std::io::stdin;
+    use std::io;
 
-    let mut stdin = BufferedReader::new(stdin());
-    for line in stdin.lines() {
+    for line in io::stdin().lines() {
         print!("{}", line);
     }
     ```
@@ -277,7 +275,7 @@ use str::{StrSlice, OwnedStr};
 use str;
 use to_str::ToStr;
 use uint;
-use unstable::finally::Finally;
+use unstable::finally::try_finally;
 use vec::{OwnedVector, MutableVector, ImmutableVector, OwnedCloneableVector};
 use vec;
 
@@ -365,7 +363,7 @@ pub struct IoError {
 
 impl fmt::Show for IoError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        if_ok!(fmt.buf.write_str(self.desc));
+        try!(fmt.buf.write_str(self.desc));
         match self.detail {
             Some(ref s) => write!(fmt.buf, " ({})", *s),
             None => Ok(())
@@ -473,25 +471,33 @@ pub trait Reader {
     /// pushed on to the vector, otherwise the amount `len` bytes couldn't be
     /// read (an error was encountered), and the error is returned.
     fn push_bytes(&mut self, buf: &mut ~[u8], len: uint) -> IoResult<()> {
+        struct State<'a> {
+            buf: &'a mut ~[u8],
+            total_read: uint
+        }
+
         let start_len = buf.len();
-        let mut total_read = 0;
+        let mut s = State { buf: buf, total_read: 0 };
 
-        buf.reserve_additional(len);
-        unsafe { buf.set_len(start_len + len); }
+        s.buf.reserve_additional(len);
+        unsafe { s.buf.set_len(start_len + len); }
 
-        (|| {
-            while total_read < len {
-                let len = buf.len();
-                let slice = buf.mut_slice(start_len + total_read, len);
-                match self.read(slice) {
-                    Ok(nread) => {
-                        total_read += nread;
+        try_finally(
+            &mut s, (),
+            |s, _| {
+                while s.total_read < len {
+                    let len = s.buf.len();
+                    let slice = s.buf.mut_slice(start_len + s.total_read, len);
+                    match self.read(slice) {
+                        Ok(nread) => {
+                            s.total_read += nread;
+                        }
+                        Err(e) => return Err(e)
                     }
-                    Err(e) => return Err(e)
                 }
-            }
-            Ok(())
-        }).finally(|| unsafe { buf.set_len(start_len + total_read) })
+                Ok(())
+            },
+            |s| unsafe { s.buf.set_len(start_len + s.total_read) })
     }
 
     /// Reads `len` bytes and gives you back a new vector of length `len`
@@ -573,7 +579,7 @@ pub trait Reader {
         let mut pos = 0;
         let mut i = nbytes;
         while i > 0 {
-            val += (if_ok!(self.read_u8()) as u64) << pos;
+            val += (try!(self.read_u8()) as u64) << pos;
             pos += 8;
             i -= 1;
         }
@@ -597,7 +603,7 @@ pub trait Reader {
         let mut i = nbytes;
         while i > 0 {
             i -= 1;
-            val += (if_ok!(self.read_u8()) as u64) << i * 8;
+            val += (try!(self.read_u8()) as u64) << i * 8;
         }
         Ok(val)
     }
@@ -771,6 +777,13 @@ pub trait Reader {
         self.read_byte().map(|i| i as i8)
     }
 
+    /// Creates a wrapper around a mutable reference to the reader.
+    ///
+    /// This is useful to allow applying adaptors while still
+    /// retaining ownership of the original value.
+    fn by_ref<'a>(&'a mut self) -> RefReader<'a, Self> {
+        RefReader { inner: self }
+    }
 }
 
 impl Reader for ~Reader {
@@ -779,6 +792,14 @@ impl Reader for ~Reader {
 
 impl<'a> Reader for &'a mut Reader {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<uint> { self.read(buf) }
+}
+
+pub struct RefReader<'a, R> {
+    priv inner: &'a mut R
+}
+
+impl<'a, R: Reader> Reader for RefReader<'a, R> {
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<uint> { self.inner.read(buf) }
 }
 
 fn extend_sign(val: u64, nbytes: uint) -> i64 {
@@ -834,12 +855,12 @@ pub trait Writer {
 
     /// Write the result of passing n through `int::to_str_bytes`.
     fn write_int(&mut self, n: int) -> IoResult<()> {
-        int::to_str_bytes(n, 10u, |bytes| self.write(bytes))
+        write!(self, "{:d}", n)
     }
 
     /// Write the result of passing n through `uint::to_str_bytes`.
     fn write_uint(&mut self, n: uint) -> IoResult<()> {
-        uint::to_str_bytes(n, 10u, |bytes| self.write(bytes))
+        write!(self, "{:u}", n)
     }
 
     /// Write a little-endian uint (number of bytes depends on system).
@@ -961,6 +982,14 @@ pub trait Writer {
     fn write_i8(&mut self, n: i8) -> IoResult<()> {
         self.write([n as u8])
     }
+
+    /// Creates a wrapper around a mutable reference to the writer.
+    ///
+    /// This is useful to allow applying wrappers while still
+    /// retaining ownership of the original value.
+    fn by_ref<'a>(&'a mut self) -> RefWriter<'a, Self> {
+        RefWriter { inner: self }
+    }
 }
 
 impl Writer for ~Writer {
@@ -972,6 +1001,16 @@ impl<'a> Writer for &'a mut Writer {
     fn write(&mut self, buf: &[u8]) -> IoResult<()> { self.write(buf) }
     fn flush(&mut self) -> IoResult<()> { self.flush() }
 }
+
+pub struct RefWriter<'a, W> {
+    inner: &'a mut W
+}
+
+impl<'a, W: Writer> Writer for RefWriter<'a, W> {
+    fn write(&mut self, buf: &[u8]) -> IoResult<()> { self.inner.write(buf) }
+    fn flush(&mut self) -> IoResult<()> { self.inner.flush() }
+}
+
 
 pub trait Stream: Reader + Writer { }
 
@@ -998,6 +1037,30 @@ pub struct Lines<'r, T> {
 impl<'r, T: Buffer> Iterator<~str> for Lines<'r, T> {
     fn next(&mut self) -> Option<~str> {
         self.buffer.read_line().ok()
+    }
+}
+
+/// An iterator that reads a utf8-encoded character on each iteration,
+/// until `.read_char()` returns `None`.
+///
+/// # Notes about the Iteration Protocol
+///
+/// The `Chars` may yield `None` and thus terminate
+/// an iteration, but continue to yield elements if iteration
+/// is attempted again.
+///
+/// # Error
+///
+/// This iterator will swallow all I/O errors, transforming `Err` values to
+/// `None`. If errors need to be handled, it is recommended to use the
+/// `read_char` method directly.
+pub struct Chars<'r, T> {
+    priv buffer: &'r mut T
+}
+
+impl<'r, T: Buffer> Iterator<char> for Chars<'r, T> {
+    fn next(&mut self) -> Option<char> {
+        self.buffer.read_char().ok()
     }
 }
 
@@ -1032,10 +1095,9 @@ pub trait Buffer: Reader {
     /// # Example
     ///
     /// ```rust
-    /// use std::io::{BufferedReader, stdin};
+    /// use std::io;
     ///
-    /// let mut reader = BufferedReader::new(stdin());
-    ///
+    /// let mut reader = io::stdin();
     /// let input = reader.read_line().ok().unwrap_or(~"nothing");
     /// ```
     ///
@@ -1126,7 +1188,7 @@ pub trait Buffer: Reader {
     /// This function will also return error if the stream does not contain a
     /// valid utf-8 encoded codepoint as the next few bytes in the stream.
     fn read_char(&mut self) -> IoResult<char> {
-        let first_byte = if_ok!(self.read_byte());
+        let first_byte = try!(self.read_byte());
         let width = str::utf8_char_width(first_byte);
         if width == 1 { return Ok(first_byte as char) }
         if width == 0 { return Err(standard_error(InvalidInput)) } // not utf8
@@ -1134,7 +1196,7 @@ pub trait Buffer: Reader {
         {
             let mut start = 1;
             while start < width {
-                match if_ok!(self.read(buf.mut_slice(start, width))) {
+                match try!(self.read(buf.mut_slice(start, width))) {
                     n if n == width - start => break,
                     n if n < width - start => { start += n; }
                     _ => return Err(standard_error(InvalidInput)),
@@ -1145,6 +1207,17 @@ pub trait Buffer: Reader {
             Some(s) => Ok(s.char_at(0)),
             None => Err(standard_error(InvalidInput))
         }
+    }
+
+    /// Create an iterator that reads a utf8-encoded character on each iteration until EOF.
+    ///
+    /// # Error
+    ///
+    /// This iterator will transform all error values to `None`, discarding the
+    /// cause of the error. If this is undesirable, it is recommended to call
+    /// `read_char` directly.
+    fn chars<'r>(&'r mut self) -> Chars<'r, Self> {
+        Chars { buffer: self }
     }
 }
 
@@ -1157,19 +1230,21 @@ pub enum SeekStyle {
     SeekCur,
 }
 
-/// # FIXME
-/// * Are `u64` and `i64` the right choices?
 pub trait Seek {
     /// Return position of file cursor in the stream
     fn tell(&self) -> IoResult<u64>;
 
     /// Seek to an offset in a stream
     ///
-    /// A successful seek clears the EOF indicator.
+    /// A successful seek clears the EOF indicator. Seeking beyond EOF is
+    /// allowed, but seeking before position 0 is not allowed.
     ///
-    /// # FIXME
+    /// # Errors
     ///
-    /// * What is the behavior when seeking past the end of a stream?
+    /// * Seeking to a negative offset is considered an error
+    /// * Seeking past the end of the stream does not modify the underlying
+    ///   stream, but the next write may cause the previous data to be filled in
+    ///   with a bit pattern.
     fn seek(&mut self, pos: i64, style: SeekStyle) -> IoResult<()>;
 }
 
@@ -1209,7 +1284,7 @@ pub trait Acceptor<T> {
 ///
 /// Since connection attempts can continue forever, this iterator always returns
 /// `Some`. The `Some` contains the `IoResult` representing whether the
-/// connection attempt was succesful.  A successful connection will be wrapped
+/// connection attempt was successful.  A successful connection will be wrapped
 /// in `Ok`. A failed connection is represented as an `Err`.
 pub struct IncomingConnections<'a, A> {
     priv inc: &'a mut A,

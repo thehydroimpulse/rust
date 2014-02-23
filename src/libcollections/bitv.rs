@@ -14,7 +14,6 @@
 use std::cmp;
 use std::iter::RandomAccessIterator;
 use std::iter::{Rev, Enumerate, Repeat, Map, Zip};
-use std::num;
 use std::ops;
 use std::uint;
 use std::vec;
@@ -846,7 +845,7 @@ impl MutableSet<uint> for BitvSet {
         }
         let nbits = self.capacity();
         if value >= nbits {
-            let newsize = num::max(value, nbits * 2) / uint::BITS + 1;
+            let newsize = cmp::max(value, nbits * 2) / uint::BITS + 1;
             assert!(newsize > self.bitv.storage.len());
             self.bitv.storage.grow(newsize, &0);
         }
@@ -881,7 +880,7 @@ impl BitvSet {
     fn commons<'a>(&'a self, other: &'a BitvSet)
         -> Map<'static, ((uint, &'a uint), &'a ~[uint]), (uint, uint, uint),
                Zip<Enumerate<vec::Items<'a, uint>>, Repeat<&'a ~[uint]>>> {
-        let min = num::min(self.bitv.storage.len(), other.bitv.storage.len());
+        let min = cmp::min(self.bitv.storage.len(), other.bitv.storage.len());
         self.bitv.storage.slice(0, min).iter().enumerate()
             .zip(Repeat::new(&other.bitv.storage))
             .map(|((i, &w), o_store)| (i * uint::BITS, w, o_store[i]))
@@ -939,7 +938,8 @@ impl<'a> Iterator<uint> for BitPositions<'a> {
 
 #[cfg(test)]
 mod tests {
-    use extra::test::BenchHarness;
+    extern crate test;
+    use self::test::BenchHarness;
 
     use bitv::{Bitv, SmallBitv, BigBitv, BitvSet, from_bools, from_fn,
                from_bytes};
@@ -1562,6 +1562,7 @@ mod tests {
         let mut bitv = 0 as uint;
         b.iter(|| {
             bitv |= (1 << ((r.next_u32() as uint) % uint::BITS));
+            &bitv
         })
     }
 
@@ -1571,6 +1572,7 @@ mod tests {
         let mut bitv = SmallBitv::new(uint::BITS);
         b.iter(|| {
             bitv.set((r.next_u32() as uint) % uint::BITS, true);
+            &bitv
         })
     }
 
@@ -1580,6 +1582,7 @@ mod tests {
         let mut bitv = BigBitv::new(~[0]);
         b.iter(|| {
             bitv.set((r.next_u32() as uint) % uint::BITS, true);
+            &bitv
         })
     }
 
@@ -1591,6 +1594,7 @@ mod tests {
         let mut bitv = BigBitv::new(storage);
         b.iter(|| {
             bitv.set((r.next_u32() as uint) % BENCH_BITS, true);
+            &bitv
         })
     }
 
@@ -1600,6 +1604,7 @@ mod tests {
         let mut bitv = Bitv::new(BENCH_BITS, false);
         b.iter(|| {
             bitv.set((r.next_u32() as uint) % BENCH_BITS, true);
+            &bitv
         })
     }
 
@@ -1609,6 +1614,7 @@ mod tests {
         let mut bitv = Bitv::new(uint::BITS, false);
         b.iter(|| {
             bitv.set((r.next_u32() as uint) % uint::BITS, true);
+            &bitv
         })
     }
 
@@ -1618,6 +1624,7 @@ mod tests {
         let mut bitv = BitvSet::new();
         b.iter(|| {
             bitv.insert((r.next_u32() as uint) % uint::BITS);
+            &bitv
         })
     }
 
@@ -1627,6 +1634,7 @@ mod tests {
         let mut bitv = BitvSet::new();
         b.iter(|| {
             bitv.insert((r.next_u32() as uint) % BENCH_BITS);
+            &bitv
         })
     }
 

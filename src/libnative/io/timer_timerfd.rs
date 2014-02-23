@@ -1,4 +1,4 @@
-// Copyright 2013 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2013-2014 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -28,13 +28,15 @@
 //!
 //! As with timer_other, all units in this file are in units of millseconds.
 
+#[allow(non_camel_case_types)];
+
 use std::comm::Data;
 use std::libc;
 use std::ptr;
 use std::os;
 use std::rt::rtio;
 use std::hashmap::HashMap;
-use std::unstable::intrinsics;
+use std::mem;
 
 use io::file::FileDesc;
 use io::IoResult;
@@ -75,7 +77,7 @@ fn helper(input: libc::c_int, messages: Port<Req>) {
     }
 
     add(efd, input);
-    let events: [imp::epoll_event, ..16] = unsafe { intrinsics::init() };
+    let events: [imp::epoll_event, ..16] = unsafe { mem::init() };
     let mut map: HashMap<libc::c_int, (Chan<()>, bool)> = HashMap::new();
     'outer: loop {
         let n = match unsafe {

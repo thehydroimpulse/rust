@@ -27,15 +27,16 @@ use unstable::intrinsics;
 int_module!(i64, 64)
 
 impl Bitwise for i64 {
-    /// Counts the number of bits set. Wraps LLVM's `ctpop` intrinsic.
+    /// Returns the number of ones in the binary representation of the number.
     #[inline]
-    fn population_count(&self) -> i64 { unsafe { intrinsics::ctpop64(*self) } }
+    fn count_ones(&self) -> i64 { unsafe { intrinsics::ctpop64(*self) } }
 
-    /// Counts the number of leading zeros. Wraps LLVM's `ctlz` intrinsic.
+    /// Returns the number of leading zeros in the in the binary representation
+    /// of the number.
     #[inline]
     fn leading_zeros(&self) -> i64 { unsafe { intrinsics::ctlz64(*self) } }
 
-    /// Counts the number of trailing zeros. Wraps LLVM's `cttz` intrinsic.
+    /// Counts the number of trailing zeros.
     #[inline]
     fn trailing_zeros(&self) -> i64 { unsafe { intrinsics::cttz64(*self) } }
 }
@@ -60,8 +61,6 @@ impl CheckedSub for i64 {
     }
 }
 
-// FIXME: #8449: should not be disabled on 32-bit
-#[cfg(target_word_size = "64")]
 impl CheckedMul for i64 {
     #[inline]
     fn checked_mul(&self, v: &i64) -> Option<i64> {

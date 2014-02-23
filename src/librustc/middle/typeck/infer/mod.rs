@@ -1,4 +1,4 @@
-// Copyright 2012 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2012-2014 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -10,6 +10,7 @@
 
 /*! See doc.rs for documentation */
 
+#[allow(non_camel_case_types)];
 
 pub use middle::ty::IntVarValue;
 pub use middle::typeck::infer::resolve::resolve_and_force_all_but_regions;
@@ -160,7 +161,7 @@ pub enum SubregionOrigin {
     DerefPointer(Span),
 
     // Closure bound must not outlive captured free variables
-    FreeVariable(Span),
+    FreeVariable(Span, ast::NodeId),
 
     // Index into slice must be within its lifetime
     IndexSlice(Span),
@@ -171,6 +172,9 @@ pub enum SubregionOrigin {
 
     // Creating a pointer `b` to contents of another reference
     Reborrow(Span),
+
+    // Creating a pointer `b` to contents of an upvar
+    ReborrowUpvar(Span, ty::UpvarId),
 
     // (&'a &'b T) where a >= b
     ReferenceOutlivesReferent(ty::t, Span),
@@ -224,6 +228,8 @@ pub enum RegionVariableOrigin {
     // Region variables created for bound regions
     // when doing subtyping/lub/glb computations
     BoundRegionInFnType(Span, ty::BoundRegion),
+
+    UpvarRegion(ty::UpvarId, Span),
 
     BoundRegionInTypeOrImpl(Span),
 
@@ -876,10 +882,11 @@ impl SubregionOrigin {
             InfStackClosure(a) => a,
             InvokeClosure(a) => a,
             DerefPointer(a) => a,
-            FreeVariable(a) => a,
+            FreeVariable(a, _) => a,
             IndexSlice(a) => a,
             RelateObjectBound(a) => a,
             Reborrow(a) => a,
+            ReborrowUpvar(a, _) => a,
             ReferenceOutlivesReferent(_, a) => a,
             BindingTypeIsNotValidAtDecl(a) => a,
             CallRcvr(a) => a,
@@ -898,10 +905,11 @@ impl Repr for SubregionOrigin {
             InfStackClosure(a) => format!("InfStackClosure({})", a.repr(tcx)),
             InvokeClosure(a) => format!("InvokeClosure({})", a.repr(tcx)),
             DerefPointer(a) => format!("DerefPointer({})", a.repr(tcx)),
-            FreeVariable(a) => format!("FreeVariable({})", a.repr(tcx)),
+            FreeVariable(a, b) => format!("FreeVariable({}, {})", a.repr(tcx), b),
             IndexSlice(a) => format!("IndexSlice({})", a.repr(tcx)),
             RelateObjectBound(a) => format!("RelateObjectBound({})", a.repr(tcx)),
             Reborrow(a) => format!("Reborrow({})", a.repr(tcx)),
+            ReborrowUpvar(a, b) => format!("ReborrowUpvar({},{:?})", a.repr(tcx), b),
             ReferenceOutlivesReferent(_, a) =>
                 format!("ReferenceOutlivesReferent({})", a.repr(tcx)),
             BindingTypeIsNotValidAtDecl(a) =>
@@ -928,6 +936,7 @@ impl RegionVariableOrigin {
             BoundRegionInFnType(a, _) => a,
             BoundRegionInTypeOrImpl(a) => a,
             BoundRegionInCoherence => codemap::DUMMY_SP,
+            UpvarRegion(_, a) => a
         }
     }
 }
@@ -948,6 +957,9 @@ impl Repr for RegionVariableOrigin {
             BoundRegionInTypeOrImpl(a) => format!("bound_regionInTypeOrImpl({})",
                                                a.repr(tcx)),
             BoundRegionInCoherence => format!("bound_regionInCoherence"),
+            UpvarRegion(a, b) => format!("UpvarRegion({}, {})",
+                                         a.repr(tcx),
+                                         b.repr(tcx)),
         }
     }
 }

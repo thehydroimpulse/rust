@@ -17,7 +17,7 @@ Unicode string manipulation (`str` type)
 Rust's string type is one of the core primitive types of the language. While
 represented by the name `str`, the name `str` is not actually a valid type in
 Rust. Each string must also be decorated with its ownership. This means that
-there are two common kinds of strings in rust:
+there are two common kinds of strings in Rust:
 
 * `~str` - This is an owned string. This type obeys all of the normal semantics
            of the `~T` types, meaning that it has one, and only one, owner. This
@@ -39,7 +39,7 @@ fn main() {
 }
  ```
 
-From the example above, you can see that rust has 2 different kinds of string
+From the example above, you can see that Rust has 2 different kinds of string
 literals. The owned literals correspond to the owned string types, but the
 "borrowed literal" is actually more akin to C's concept of a static string.
 
@@ -51,7 +51,7 @@ inferred from the type, these static strings are not mutable.
 
 # Mutability
 
-Many languages have immutable strings by default, and rust has a particular
+Many languages have immutable strings by default, and Rust has a particular
 flavor on this idea. As with the rest of Rust types, strings are immutable by
 default. If a string is declared as `mut`, however, it may be mutated. This
 works the same way as the rest of Rust's type system in the sense that if
@@ -101,6 +101,7 @@ use to_str::ToStr;
 use from_str::FromStr;
 use vec;
 use vec::{OwnedVector, OwnedCloneableVector, ImmutableVector, MutableVector};
+use vec_ng::Vec;
 use default::Default;
 use to_bytes::{IterBytes, Cb};
 use unstable::raw::Repr;
@@ -219,6 +220,18 @@ impl<'a, S: Str> StrVector for &'a [S] {
             result.push_str(s.as_slice());
         }
         result
+    }
+}
+
+impl<'a, S: Str> StrVector for Vec<S> {
+    #[inline]
+    fn concat(&self) -> ~str {
+        self.as_slice().concat()
+    }
+
+    #[inline]
+    fn connect(&self, sep: &str) -> ~str {
+        self.as_slice().connect(sep)
     }
 }
 
@@ -567,14 +580,14 @@ impl<'a> Iterator<&'a str> for StrSplits<'a> {
 // Helper functions used for Unicode normalization
 fn canonical_sort(comb: &mut [(char, u8)]) {
     use iter::range;
-    use tuple::CloneableTuple;
+    use tuple::Tuple2;
 
     let len = comb.len();
     for i in range(0, len) {
         let mut swapped = false;
         for j in range(1, len-i) {
-            let classA = comb[j-1].second();
-            let classB = comb[j].second();
+            let classA = *comb[j-1].ref1();
+            let classB = *comb[j].ref1();
             if classA != 0 && classB != 0 && classA > classB {
                 comb.swap(j-1, j);
                 swapped = true;
@@ -625,15 +638,17 @@ impl<'a> Iterator<char> for Normalizations<'a> {
 
         if !self.sorted {
             for ch in self.iter {
+                let buffer = &mut self.buffer;
+                let sorted = &mut self.sorted;
                 decomposer(ch, |d| {
                     let class = canonical_combining_class(d);
-                    if class == 0 && !self.sorted {
-                        canonical_sort(self.buffer);
-                        self.sorted = true;
+                    if class == 0 && !*sorted {
+                        canonical_sort(*buffer);
+                        *sorted = true;
                     }
-                    self.buffer.push((d, class));
+                    buffer.push((d, class));
                 });
-                if self.sorted { break }
+                if *sorted { break }
             }
         }
 
@@ -729,29 +744,38 @@ pub fn eq(a: &~str, b: &~str) -> bool {
 Section: Misc
 */
 
-/// Determines if a vector of bytes contains valid UTF-8
-pub fn is_utf8(v: &[u8]) -> bool {
-    first_non_utf8_index(v).is_none()
-}
-
+/// Walk through `iter` checking that it's a valid UTF-8 sequence,
+/// returning `true` in that case, or, if it is invalid, `false` with
+/// `iter` reset such that it is pointing at the first byte in the
+/// invalid sequence.
 #[inline(always)]
-fn first_non_utf8_index(v: &[u8]) -> Option<uint> {
-    let mut i = 0u;
-    let total = v.len();
-    fn unsafe_get(xs: &[u8], i: uint) -> u8 {
-        unsafe { *xs.unsafe_ref(i) }
-    }
-    while i < total {
-        let v_i = unsafe_get(v, i);
-        if v_i < 128u8 {
-            i += 1u;
-        } else {
-            let w = utf8_char_width(v_i);
-            if w == 0u { return Some(i); }
+fn run_utf8_validation_iterator(iter: &mut vec::Items<u8>) -> bool {
+    loop {
+        // save the current thing we're pointing at.
+        let old = *iter;
 
-            let nexti = i + w;
-            if nexti > total { return Some(i); }
+        // restore the iterator we had at the start of this codepoint.
+        macro_rules! err ( () => { {*iter = old; return false} });
+        macro_rules! next ( () => {
+                match iter.next() {
+                    Some(a) => *a,
+                    // we needed data, but there was none: error!
+                    None => err!()
+                }
+            });
 
+        let first = match iter.next() {
+            Some(&b) => b,
+            // we're at the end of the iterator and a codepoint
+            // boundary at the same time, so this string is valid.
+            None => return true
+        };
+
+        // ASCII characters are always valid, so only large
+        // bytes need more examination.
+        if first >= 128 {
+            let w = utf8_char_width(first);
+            let second = next!();
             // 2-byte encoding is for codepoints  \u0080 to  \u07ff
             //        first  C2 80        last DF BF
             // 3-byte encoding is for codepoints  \u0800 to  \uffff
@@ -770,93 +794,241 @@ fn first_non_utf8_index(v: &[u8]) -> Option<uint> {
             //               %xED %x80-9F UTF8-tail / %xEE-EF 2( UTF8-tail )
             // UTF8-4      = %xF0 %x90-BF 2( UTF8-tail ) / %xF1-F3 3( UTF8-tail ) /
             //               %xF4 %x80-8F 2( UTF8-tail )
-            // UTF8-tail   = %x80-BF
             match w {
-                2 => if unsafe_get(v, i + 1) & 192u8 != TAG_CONT_U8 {
-                    return Some(i)
-                },
-                3 => match (v_i,
-                            unsafe_get(v, i + 1),
-                            unsafe_get(v, i + 2) & 192u8) {
-                    (0xE0        , 0xA0 .. 0xBF, TAG_CONT_U8) => (),
-                    (0xE1 .. 0xEC, 0x80 .. 0xBF, TAG_CONT_U8) => (),
-                    (0xED        , 0x80 .. 0x9F, TAG_CONT_U8) => (),
-                    (0xEE .. 0xEF, 0x80 .. 0xBF, TAG_CONT_U8) => (),
-                    _ => return Some(i),
-                },
-                _ => match (v_i,
-                            unsafe_get(v, i + 1),
-                            unsafe_get(v, i + 2) & 192u8,
-                            unsafe_get(v, i + 3) & 192u8) {
-                    (0xF0        , 0x90 .. 0xBF, TAG_CONT_U8, TAG_CONT_U8) => (),
-                    (0xF1 .. 0xF3, 0x80 .. 0xBF, TAG_CONT_U8, TAG_CONT_U8) => (),
-                    (0xF4        , 0x80 .. 0x8F, TAG_CONT_U8, TAG_CONT_U8) => (),
-                    _ => return Some(i)
-                },
+                2 => if second & 192 != TAG_CONT_U8 {err!()},
+                3 => {
+                    match (first, second, next!() & 192) {
+                        (0xE0        , 0xA0 .. 0xBF, TAG_CONT_U8) |
+                        (0xE1 .. 0xEC, 0x80 .. 0xBF, TAG_CONT_U8) |
+                        (0xED        , 0x80 .. 0x9F, TAG_CONT_U8) |
+                        (0xEE .. 0xEF, 0x80 .. 0xBF, TAG_CONT_U8) => {}
+                        _ => err!()
+                    }
+                }
+                4 => {
+                    match (first, second, next!() & 192, next!() & 192) {
+                        (0xF0        , 0x90 .. 0xBF, TAG_CONT_U8, TAG_CONT_U8) |
+                        (0xF1 .. 0xF3, 0x80 .. 0xBF, TAG_CONT_U8, TAG_CONT_U8) |
+                        (0xF4        , 0x80 .. 0x8F, TAG_CONT_U8, TAG_CONT_U8) => {}
+                        _ => err!()
+                    }
+                }
+                _ => err!()
             }
-
-            i = nexti;
         }
     }
-    None
+}
+
+/// Determines if a vector of bytes contains valid UTF-8.
+pub fn is_utf8(v: &[u8]) -> bool {
+    run_utf8_validation_iterator(&mut v.iter())
+}
+
+#[inline(always)]
+fn first_non_utf8_index(v: &[u8]) -> Option<uint> {
+    let mut it = v.iter();
+
+    let ok = run_utf8_validation_iterator(&mut it);
+    if ok {
+        None
+    } else {
+        // work out how many valid bytes we've consumed
+        // (run_utf8_validation_iterator resets the iterator to just
+        // after the last good byte), which we can do because the
+        // vector iterator size_hint is exact.
+        let (remaining, _) = it.size_hint();
+        Some(v.len() - remaining)
+    }
 }
 
 /// Determines if a vector of `u16` contains valid UTF-16
 pub fn is_utf16(v: &[u16]) -> bool {
-    let len = v.len();
-    let mut i = 0u;
-    while i < len {
-        let u = v[i];
-
-        if  u <= 0xD7FF_u16 || u >= 0xE000_u16 {
-            i += 1u;
-
-        } else {
-            if i+1u < len { return false; }
-            let u2 = v[i+1u];
-            if u < 0xD7FF_u16 || u > 0xDBFF_u16 { return false; }
-            if u2 < 0xDC00_u16 || u2 > 0xDFFF_u16 { return false; }
-            i += 2u;
+    let mut it = v.iter();
+    macro_rules! next ( ($ret:expr) => {
+            match it.next() { Some(u) => *u, None => return $ret }
         }
-    }
-    return true;
-}
+    )
+    loop {
+        let u = next!(true);
 
-/// Iterates over the utf-16 characters in the specified slice, yielding each
-/// decoded unicode character to the function provided.
-///
-/// # Failures
-///
-/// * Fails on invalid utf-16 data
-pub fn utf16_chars(v: &[u16], f: |char|) {
-    let len = v.len();
-    let mut i = 0u;
-    while i < len && v[i] != 0u16 {
-        let u = v[i];
-
-        if  u <= 0xD7FF_u16 || u >= 0xE000_u16 {
-            f(unsafe { cast::transmute(u as u32) });
-            i += 1u;
-
-        } else {
-            let u2 = v[i+1u];
-            assert!(u >= 0xD800_u16 && u <= 0xDBFF_u16);
-            assert!(u2 >= 0xDC00_u16 && u2 <= 0xDFFF_u16);
-            let mut c: u32 = (u - 0xD800_u16) as u32;
-            c = c << 10;
-            c |= (u2 - 0xDC00_u16) as u32;
-            c |= 0x1_0000_u32;
-            f(unsafe { cast::transmute(c) });
-            i += 2u;
+        match char::from_u32(u as u32) {
+            Some(_) => {}
+            None => {
+                let u2 = next!(false);
+                if u < 0xD7FF || u > 0xDBFF ||
+                    u2 < 0xDC00 || u2 > 0xDFFF { return false; }
+            }
         }
     }
 }
 
-/// Allocates a new string from the utf-16 slice provided
-pub fn from_utf16(v: &[u16]) -> ~str {
-    let mut buf = with_capacity(v.len());
-    utf16_chars(v, |ch| buf.push_char(ch));
-    buf
+/// An iterator that decodes UTF-16 encoded codepoints from a vector
+/// of `u16`s.
+#[deriving(Clone)]
+pub struct UTF16Items<'a> {
+    priv iter: vec::Items<'a, u16>
+}
+/// The possibilities for values decoded from a `u16` stream.
+#[deriving(Eq, TotalEq, Clone)]
+pub enum UTF16Item {
+    /// A valid codepoint.
+    ScalarValue(char),
+    /// An invalid surrogate without its pair.
+    LoneSurrogate(u16)
+}
+
+impl UTF16Item {
+    /// Convert `self` to a `char`, taking `LoneSurrogate`s to the
+    /// replacement character (U+FFFD).
+    #[inline]
+    pub fn to_char_lossy(&self) -> char {
+        match *self {
+            ScalarValue(c) => c,
+            LoneSurrogate(_) => '\uFFFD'
+        }
+    }
+}
+
+impl<'a> Iterator<UTF16Item> for UTF16Items<'a> {
+    fn next(&mut self) -> Option<UTF16Item> {
+        let u = match self.iter.next() {
+            Some(u) => *u,
+            None => return None
+        };
+
+        if u < 0xD800 || 0xDFFF < u {
+            // not a surrogate
+            Some(ScalarValue(unsafe {cast::transmute(u as u32)}))
+        } else if u >= 0xDC00 {
+            // a trailing surrogate
+            Some(LoneSurrogate(u))
+        } else {
+            // preserve state for rewinding.
+            let old = self.iter;
+
+            let u2 = match self.iter.next() {
+                Some(u2) => *u2,
+                // eof
+                None => return Some(LoneSurrogate(u))
+            };
+            if u2 < 0xDC00 || u2 > 0xDFFF {
+                // not a trailing surrogate so we're not a valid
+                // surrogate pair, so rewind to redecode u2 next time.
+                self.iter = old;
+                return Some(LoneSurrogate(u))
+            }
+
+            // all ok, so lets decode it.
+            let c = ((u - 0xD800) as u32 << 10 | (u2 - 0xDC00) as u32) + 0x1_0000;
+            Some(ScalarValue(unsafe {cast::transmute(c)}))
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (uint, Option<uint>) {
+        let (low, high) = self.iter.size_hint();
+        // we could be entirely valid surrogates (2 elements per
+        // char), or entirely non-surrogates (1 element per char)
+        (low / 2, high)
+    }
+}
+
+/// Create an iterator over the UTF-16 encoded codepoints in `v`,
+/// returning invalid surrogates as `LoneSurrogate`s.
+///
+/// # Example
+///
+/// ```rust
+/// use std::str;
+/// use std::str::{ScalarValue, LoneSurrogate};
+///
+/// // 𝄞mus<invalid>ic<invalid>
+/// let v = [0xD834, 0xDD1E, 0x006d, 0x0075,
+///          0x0073, 0xDD1E, 0x0069, 0x0063,
+///          0xD834];
+///
+/// assert_eq!(str::utf16_items(v).to_owned_vec(),
+///            ~[ScalarValue('𝄞'),
+///              ScalarValue('m'), ScalarValue('u'), ScalarValue('s'),
+///              LoneSurrogate(0xDD1E),
+///              ScalarValue('i'), ScalarValue('c'),
+///              LoneSurrogate(0xD834)]);
+/// ```
+pub fn utf16_items<'a>(v: &'a [u16]) -> UTF16Items<'a> {
+    UTF16Items { iter : v.iter() }
+}
+
+/// Return a slice of `v` ending at (and not including) the first NUL
+/// (0).
+///
+/// # Example
+///
+/// ```rust
+/// use std::str;
+///
+/// // "abcd"
+/// let mut v = ['a' as u16, 'b' as u16, 'c' as u16, 'd' as u16];
+/// // no NULs so no change
+/// assert_eq!(str::truncate_utf16_at_nul(v), v.as_slice());
+///
+/// // "ab\0d"
+/// v[2] = 0;
+/// assert_eq!(str::truncate_utf16_at_nul(v),
+///            &['a' as u16, 'b' as u16]);
+/// ```
+pub fn truncate_utf16_at_nul<'a>(v: &'a [u16]) -> &'a [u16] {
+    match v.iter().position(|c| *c == 0) {
+        // don't include the 0
+        Some(i) => v.slice_to(i),
+        None => v
+    }
+}
+
+/// Decode a UTF-16 encoded vector `v` into a string, returning `None`
+/// if `v` contains any invalid data.
+///
+/// # Example
+///
+/// ```rust
+/// use std::str;
+///
+/// // 𝄞music
+/// let mut v = [0xD834, 0xDD1E, 0x006d, 0x0075,
+///              0x0073, 0x0069, 0x0063];
+/// assert_eq!(str::from_utf16(v), Some(~"𝄞music"));
+///
+/// // 𝄞mu<invalid>ic
+/// v[4] = 0xD800;
+/// assert_eq!(str::from_utf16(v), None);
+/// ```
+pub fn from_utf16(v: &[u16]) -> Option<~str> {
+    let mut s = with_capacity(v.len() / 2);
+    for c in utf16_items(v) {
+        match c {
+            ScalarValue(c) => s.push_char(c),
+            LoneSurrogate(_) => return None
+        }
+    }
+    Some(s)
+}
+
+/// Decode a UTF-16 encoded vector `v` into a string, replacing
+/// invalid data with the replacement character (U+FFFD).
+///
+/// # Example
+/// ```rust
+/// use std::str;
+///
+/// // 𝄞mus<invalid>ic<invalid>
+/// let v = [0xD834, 0xDD1E, 0x006d, 0x0075,
+///          0x0073, 0xDD1E, 0x0069, 0x0063,
+///          0xD834];
+///
+/// assert_eq!(str::from_utf16_lossy(v),
+///            ~"𝄞mus\uFFFDic\uFFFD");
+/// ```
+pub fn from_utf16_lossy(v: &[u16]) -> ~str {
+    utf16_items(v).map(|c| c.to_char_lossy()).collect()
 }
 
 /// Allocates a new string with the specified capacity. The string returned is
@@ -1240,7 +1412,7 @@ pub mod raw {
         let mut i = 0;
         while *curr != 0 {
             i += 1;
-            curr = ptr::offset(buf, i);
+            curr = buf.offset(i);
         }
         from_buf_len(buf as *u8, i as uint)
     }
@@ -1270,7 +1442,7 @@ pub mod raw {
         let mut len = 0u;
         while *curr != 0u8 {
             len += 1u;
-            curr = ptr::offset(s, len as int);
+            curr = s.offset(len as int);
         }
         let v = Slice { data: s, len: len };
         assert!(is_utf8(::cast::transmute(v)));
@@ -2009,7 +2181,7 @@ pub trait StrSlice<'a> {
     ///
     /// ## Output
     ///
-    /// ```
+    /// ```ignore
     /// 0: 中
     /// 3: 华
     /// 6: V
@@ -2919,7 +3091,6 @@ impl Default for ~str {
 mod tests {
     use iter::AdditiveIterator;
     use prelude::*;
-    use ptr;
     use str::*;
 
     #[test]
@@ -3511,6 +3682,65 @@ mod tests {
     }
 
     #[test]
+    fn test_is_utf16() {
+        macro_rules! pos ( ($($e:expr),*) => { { $(assert!(is_utf16($e));)* } });
+
+        // non-surrogates
+        pos!([0x0000],
+             [0x0001, 0x0002],
+             [0xD7FF],
+             [0xE000]);
+
+        // surrogate pairs (randomly generated with Python 3's
+        // .encode('utf-16be'))
+        pos!([0xdb54, 0xdf16, 0xd880, 0xdee0, 0xdb6a, 0xdd45],
+             [0xd91f, 0xdeb1, 0xdb31, 0xdd84, 0xd8e2, 0xde14],
+             [0xdb9f, 0xdc26, 0xdb6f, 0xde58, 0xd850, 0xdfae]);
+
+        // mixtures (also random)
+        pos!([0xd921, 0xdcc2, 0x002d, 0x004d, 0xdb32, 0xdf65],
+             [0xdb45, 0xdd2d, 0x006a, 0xdacd, 0xddfe, 0x0006],
+             [0x0067, 0xd8ff, 0xddb7, 0x000f, 0xd900, 0xdc80]);
+
+        // negative tests
+        macro_rules! neg ( ($($e:expr),*) => { { $(assert!(!is_utf16($e));)* } });
+
+        neg!(
+            // surrogate + regular unit
+            [0xdb45, 0x0000],
+            // surrogate + lead surrogate
+            [0xd900, 0xd900],
+            // unterminated surrogate
+            [0xd8ff],
+            // trail surrogate without a lead
+            [0xddb7]);
+
+        // random byte sequences that Python 3's .decode('utf-16be')
+        // failed on
+        neg!([0x5b3d, 0x0141, 0xde9e, 0x8fdc, 0xc6e7],
+             [0xdf5a, 0x82a5, 0x62b9, 0xb447, 0x92f3],
+             [0xda4e, 0x42bc, 0x4462, 0xee98, 0xc2ca],
+             [0xbe00, 0xb04a, 0x6ecb, 0xdd89, 0xe278],
+             [0x0465, 0xab56, 0xdbb6, 0xa893, 0x665e],
+             [0x6b7f, 0x0a19, 0x40f4, 0xa657, 0xdcc5],
+             [0x9b50, 0xda5e, 0x24ec, 0x03ad, 0x6dee],
+             [0x8d17, 0xcaa7, 0xf4ae, 0xdf6e, 0xbed7],
+             [0xdaee, 0x2584, 0x7d30, 0xa626, 0x121a],
+             [0xd956, 0x4b43, 0x7570, 0xccd6, 0x4f4a],
+             [0x9dcf, 0x1b49, 0x4ba5, 0xfce9, 0xdffe],
+             [0x6572, 0xce53, 0xb05a, 0xf6af, 0xdacf],
+             [0x1b90, 0x728c, 0x9906, 0xdb68, 0xf46e],
+             [0x1606, 0xbeca, 0xbe76, 0x860f, 0xdfa5],
+             [0x8b4f, 0xde7a, 0xd220, 0x9fac, 0x2b6f],
+             [0xb8fe, 0xebbe, 0xda32, 0x1a5f, 0x8b8b],
+             [0x934b, 0x8956, 0xc434, 0x1881, 0xddf7],
+             [0x5a95, 0x13fc, 0xf116, 0xd89b, 0x93f9],
+             [0xd640, 0x71f1, 0xdd7d, 0x77eb, 0x1cd8],
+             [0x348b, 0xaef0, 0xdb2c, 0xebf1, 0x1282],
+             [0x50d7, 0xd824, 0x5010, 0xb369, 0x22ea]);
+    }
+
+    #[test]
     fn test_raw_from_c_str() {
         unsafe {
             let a = ~[65, 65, 65, 65, 65, 65, 65, 0];
@@ -3547,11 +3777,11 @@ mod tests {
     fn test_as_ptr() {
         let buf = "hello".as_ptr();
         unsafe {
-            assert_eq!(*ptr::offset(buf, 0), 'h' as u8);
-            assert_eq!(*ptr::offset(buf, 1), 'e' as u8);
-            assert_eq!(*ptr::offset(buf, 2), 'l' as u8);
-            assert_eq!(*ptr::offset(buf, 3), 'l' as u8);
-            assert_eq!(*ptr::offset(buf, 4), 'o' as u8);
+            assert_eq!(*buf.offset(0), 'h' as u8);
+            assert_eq!(*buf.offset(1), 'e' as u8);
+            assert_eq!(*buf.offset(2), 'l' as u8);
+            assert_eq!(*buf.offset(3), 'l' as u8);
+            assert_eq!(*buf.offset(4), 'o' as u8);
         }
     }
 
@@ -3661,15 +3891,70 @@ mod tests {
                 0xdc9c_u16, 0xd801_u16, 0xdc92_u16, 0xd801_u16,
                 0xdc96_u16, 0xd801_u16, 0xdc86_u16, 0x0020_u16,
                 0xd801_u16, 0xdc95_u16, 0xd801_u16, 0xdc86_u16,
-                0x000a_u16 ]) ];
+                0x000a_u16 ]),
+             // Issue #12318, even-numbered non-BMP planes
+             (~"\U00020000",
+              ~[0xD840, 0xDC00])];
 
         for p in pairs.iter() {
             let (s, u) = (*p).clone();
-            assert!(s.to_utf16() == u);
-            assert!(from_utf16(u) == s);
-            assert!(from_utf16(s.to_utf16()) == s);
-            assert!(from_utf16(u).to_utf16() == u);
+            assert!(is_utf16(u));
+            assert_eq!(s.to_utf16(), u);
+
+            assert_eq!(from_utf16(u).unwrap(), s);
+            assert_eq!(from_utf16_lossy(u), s);
+
+            assert_eq!(from_utf16(s.to_utf16()).unwrap(), s);
+            assert_eq!(from_utf16(u).unwrap().to_utf16(), u);
         }
+    }
+
+    #[test]
+    fn test_utf16_invalid() {
+        // completely positive cases tested above.
+        // lead + eof
+        assert_eq!(from_utf16([0xD800]), None);
+        // lead + lead
+        assert_eq!(from_utf16([0xD800, 0xD800]), None);
+
+        // isolated trail
+        assert_eq!(from_utf16([0x0061, 0xDC00]), None);
+
+        // general
+        assert_eq!(from_utf16([0xD800, 0xd801, 0xdc8b, 0xD800]), None);
+    }
+
+    #[test]
+    fn test_utf16_lossy() {
+        // completely positive cases tested above.
+        // lead + eof
+        assert_eq!(from_utf16_lossy([0xD800]), ~"\uFFFD");
+        // lead + lead
+        assert_eq!(from_utf16_lossy([0xD800, 0xD800]), ~"\uFFFD\uFFFD");
+
+        // isolated trail
+        assert_eq!(from_utf16_lossy([0x0061, 0xDC00]), ~"a\uFFFD");
+
+        // general
+        assert_eq!(from_utf16_lossy([0xD800, 0xd801, 0xdc8b, 0xD800]), ~"\uFFFD𐒋\uFFFD");
+    }
+
+    #[test]
+    fn test_truncate_utf16_at_nul() {
+        let v = [];
+        assert_eq!(truncate_utf16_at_nul(v), &[]);
+
+        let v = [0, 2, 3];
+        assert_eq!(truncate_utf16_at_nul(v), &[]);
+
+        let v = [1, 0, 3];
+        assert_eq!(truncate_utf16_at_nul(v), &[1]);
+
+        let v = [1, 2, 0];
+        assert_eq!(truncate_utf16_at_nul(v), &[1, 2]);
+
+        let v = [1, 2, 3];
+        assert_eq!(truncate_utf16_at_nul(v), &[1, 2, 3]);
     }
 
     #[test]
@@ -4162,6 +4447,7 @@ mod tests {
         assert_eq!(s.len(), 5);
         assert_eq!(s.as_slice(), "abcde");
         assert_eq!(s.to_str(), ~"abcde");
+        assert_eq!(format!("{}", s), ~"abcde");
         assert!(s.lt(&Owned(~"bcdef")));
         assert_eq!(Slice(""), Default::default());
 
@@ -4169,6 +4455,7 @@ mod tests {
         assert_eq!(o.len(), 5);
         assert_eq!(o.as_slice(), "abcde");
         assert_eq!(o.to_str(), ~"abcde");
+        assert_eq!(format!("{}", o), ~"abcde");
         assert!(o.lt(&Slice("bcdef")));
         assert_eq!(Owned(~""), Default::default());
 
@@ -4224,7 +4511,8 @@ mod tests {
 
 #[cfg(test)]
 mod bench {
-    use extra::test::BenchHarness;
+    extern crate test;
+    use self::test::BenchHarness;
     use super::*;
     use prelude::*;
 
@@ -4354,7 +4642,7 @@ mod bench {
 
         assert_eq!(100, s.len());
         bh.iter(|| {
-            let _ = is_utf8(s);
+            is_utf8(s)
         });
     }
 
@@ -4363,7 +4651,7 @@ mod bench {
         let s = bytes!("𐌀𐌖𐌋𐌄𐌑𐌉ปรدولة الكويتทศไทย中华𐍅𐌿𐌻𐍆𐌹𐌻𐌰");
         assert_eq!(100, s.len());
         bh.iter(|| {
-            let _ = is_utf8(s);
+            is_utf8(s)
         });
     }
 
@@ -4406,7 +4694,7 @@ mod bench {
     #[bench]
     fn bench_with_capacity(bh: &mut BenchHarness) {
         bh.iter(|| {
-            let _ = with_capacity(100);
+            with_capacity(100)
         });
     }
 

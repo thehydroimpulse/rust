@@ -30,7 +30,7 @@
 //! `std` is imported at the topmost level of every crate by default, as
 //! if the first line of each crate was
 //!
-//!     extern mod std;
+//!     extern crate std;
 //!
 //! This means that the contents of std can be accessed from any context
 //! with the `std::` path prefix, as in `use std::vec`, `use std::task::spawn`,
@@ -54,6 +54,10 @@
 
 #[feature(macro_rules, globs, asm, managed_boxes, thread_local, link_args, simd)];
 
+// Turn on default type parameters.
+#[feature(default_type_params)];
+#[allow(default_type_param_usage)];
+
 // Don't link to std. We are std.
 #[no_std];
 
@@ -64,20 +68,20 @@
 // When testing libstd, bring in libuv as the I/O backend so tests can print
 // things and all of the std::io tests have an I/O interface to run on top
 // of
-#[cfg(test)] extern mod rustuv = "rustuv";
-#[cfg(test)] extern mod native = "native";
-#[cfg(test)] extern mod green = "green";
+#[cfg(test)] extern crate rustuv = "rustuv";
+#[cfg(test)] extern crate native = "native";
+#[cfg(test)] extern crate green = "green";
 
 // Make extra accessible for benchmarking
-#[cfg(test)] extern mod extra = "extra";
+#[cfg(test)] extern crate extra = "extra";
 
 // Make std testable by not duplicating lang items. See #2912
-#[cfg(test)] extern mod realstd = "std";
+#[cfg(test)] extern crate realstd = "std";
 #[cfg(test)] pub use kinds = realstd::kinds;
 #[cfg(test)] pub use ops = realstd::ops;
 #[cfg(test)] pub use cmp = realstd::cmp;
 
-mod macros;
+pub mod macros;
 
 mod rtdeps;
 
@@ -141,6 +145,7 @@ pub mod iter;
 pub mod to_str;
 pub mod to_bytes;
 pub mod clone;
+pub mod hash_old;
 pub mod hash;
 pub mod container;
 pub mod default;
@@ -178,7 +183,6 @@ pub mod cast;
 pub mod fmt;
 pub mod cleanup;
 pub mod logging;
-pub mod util;
 pub mod mem;
 
 
@@ -214,6 +218,7 @@ mod std {
     pub use cmp;
     pub use comm;
     pub use fmt;
+    pub use hash;
     pub use io;
     pub use kinds;
     pub use local_data;

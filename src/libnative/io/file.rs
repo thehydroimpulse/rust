@@ -1,4 +1,4 @@
-// Copyright 2013 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2013-2014 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -10,15 +10,17 @@
 
 //! Blocking posix-based file I/O
 
+#[allow(non_camel_case_types)];
+
 use std::sync::arc::UnsafeArc;
 use std::c_str::CString;
 use std::io::IoError;
 use std::io;
 use std::libc::{c_int, c_void};
 use std::libc;
+use std::mem;
 use std::os;
 use std::rt::rtio;
-use std::unstable::intrinsics;
 use std::vec;
 
 use io::{IoResult, retry};
@@ -147,7 +149,7 @@ impl rtio::RtioFileStream for FileDesc {
         #[cfg(windows)]
         fn os_pread(fd: c_int, buf: *u8, amt: uint, offset: u64) -> IoResult<int> {
             unsafe {
-                let mut overlap: libc::OVERLAPPED = intrinsics::init();
+                let mut overlap: libc::OVERLAPPED = mem::init();
                 let handle = libc::get_osfhandle(fd) as libc::HANDLE;
                 let mut bytes_read = 0;
                 overlap.Offset = offset as libc::DWORD;
@@ -179,7 +181,7 @@ impl rtio::RtioFileStream for FileDesc {
         #[cfg(windows)]
         fn os_pwrite(fd: c_int, buf: *u8, amt: uint, offset: u64) -> IoResult<()> {
             unsafe {
-                let mut overlap: libc::OVERLAPPED = intrinsics::init();
+                let mut overlap: libc::OVERLAPPED = mem::init();
                 let handle = libc::get_osfhandle(fd) as libc::HANDLE;
                 overlap.Offset = offset as libc::DWORD;
                 overlap.OffsetHigh = (offset >> 32) as libc::DWORD;
@@ -571,7 +573,9 @@ pub fn readdir(p: &CString) -> IoResult<~[Path]> {
                         else {
                             let fp_vec = vec::from_buf(
                                 fp_buf, wcslen(fp_buf) as uint);
-                            let fp_str = str::from_utf16(fp_vec);
+                            let fp_trimmed = str::truncate_utf16_at_nul(fp_vec);
+                            let fp_str = str::from_utf16(fp_trimmed)
+                                    .expect("rust_list_dir_wfd_fp_buf returned invalid UTF-16");
                             paths.push(Path::new(fp_str));
                         }
                         more_files = FindNextFileW(find_handle, wfd_ptr as HANDLE);
@@ -746,7 +750,7 @@ pub fn symlink(src: &CString, dst: &CString) -> IoResult<()> {
         super::mkerr_winbool(as_utf16_p(src.as_str().unwrap(), |src| {
             as_utf16_p(dst.as_str().unwrap(), |dst| {
                 unsafe { libc::CreateSymbolicLinkW(dst, src, 0) }
-            })
+            }) as libc::BOOL
         }))
     }
 
@@ -867,7 +871,7 @@ pub fn stat(p: &CString) -> IoResult<io::FileStat> {
 
     #[cfg(windows)]
     fn os_stat(p: &CString) -> IoResult<io::FileStat> {
-        let mut stat: libc::stat = unsafe { intrinsics::uninit() };
+        let mut stat: libc::stat = unsafe { mem::uninit() };
         as_utf16_p(p.as_str().unwrap(), |up| {
             match retry(|| unsafe { libc::wstat(up, &mut stat) }) {
                 0 => Ok(mkstat(&stat, p)),
@@ -878,7 +882,7 @@ pub fn stat(p: &CString) -> IoResult<io::FileStat> {
 
     #[cfg(unix)]
     fn os_stat(p: &CString) -> IoResult<io::FileStat> {
-        let mut stat: libc::stat = unsafe { intrinsics::uninit() };
+        let mut stat: libc::stat = unsafe { mem::uninit() };
         match retry(|| unsafe { libc::stat(p.with_ref(|p| p), &mut stat) }) {
             0 => Ok(mkstat(&stat, p)),
             _ => Err(super::last_error()),
@@ -897,7 +901,7 @@ pub fn lstat(p: &CString) -> IoResult<io::FileStat> {
 
     #[cfg(unix)]
     fn os_lstat(p: &CString) -> IoResult<io::FileStat> {
-        let mut stat: libc::stat = unsafe { intrinsics::uninit() };
+        let mut stat: libc::stat = unsafe { mem::uninit() };
         match retry(|| unsafe { libc::lstat(p.with_ref(|p| p), &mut stat) }) {
             0 => Ok(mkstat(&stat, p)),
             _ => Err(super::last_error()),

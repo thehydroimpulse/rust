@@ -41,10 +41,11 @@ pub trait Deque<T> : Mutable {
 
 #[cfg(test)]
 pub mod bench {
+    extern crate test;
+    use self::test::BenchHarness;
     use std::container::MutableMap;
     use std::{vec, rand};
     use std::rand::Rng;
-    use extra::test::BenchHarness;
 
     pub fn insert_rand_n<M:MutableMap<uint,uint>>(n: uint,
                                                   map: &mut M,
@@ -115,8 +116,9 @@ pub mod bench {
         // measure
         let mut i = 0;
         bh.iter(|| {
-            map.find(&i);
+            let x = map.find(&i);
             i = (i + 1) % n;
+            x
         })
      }
 }

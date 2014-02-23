@@ -46,7 +46,7 @@ pub fn foldl<T:Clone,U>(z: T, ls: @List<U>, f: |&T, &U| -> T) -> T {
 /**
  * Search for an element that matches a given predicate
  *
- * Apply function `f` to each element of `v`, starting from the first.
+ * Apply function `f` to each element of `ls`, starting from the first.
  * When function `f` returns true then an option containing the element
  * is returned. If `f` matches no elements then none is returned.
  */
@@ -59,6 +59,26 @@ pub fn find<T:Clone>(ls: @List<T>, f: |&T| -> bool) -> Option<T> {
             tl
           }
           Nil => return None
+        }
+    };
+}
+
+/**
+ * Returns true if a list contains an element that matches a given predicate
+ *
+ * Apply function `f` to each element of `ls`, starting from the first.
+ * When function `f` returns true then it also returns true. If `f` matches no
+ * elements then false is returned.
+ */
+pub fn any<T>(ls: @List<T>, f: |&T| -> bool) -> bool {
+    let mut ls = ls;
+    loop {
+        ls = match *ls {
+            Cons(ref hd, tl) => {
+                if f(hd) { return true; }
+                tl
+            }
+            Nil => return false
         }
     };
 }
@@ -220,6 +240,15 @@ mod tests {
         let empty = @list::Nil::<int>;
         assert_eq!(list::find(l, match_), option::None::<int>);
         assert_eq!(list::find(empty, match_), option::None::<int>);
+    }
+
+    #[test]
+    fn test_any() {
+        fn match_(i: &int) -> bool { return *i == 2; }
+        let l = from_vec([0, 1, 2]);
+        let empty = @list::Nil::<int>;
+        assert_eq!(list::any(l, match_), true);
+        assert_eq!(list::any(empty, match_), false);
     }
 
     #[test]

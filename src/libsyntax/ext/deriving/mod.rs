@@ -26,6 +26,7 @@ pub mod clone;
 pub mod iter_bytes;
 pub mod encodable;
 pub mod decodable;
+pub mod hash;
 pub mod rand;
 pub mod to_str;
 pub mod show;
@@ -48,30 +49,33 @@ pub mod generic;
 pub fn expand_meta_deriving(cx: &mut ExtCtxt,
                             _span: Span,
                             mitem: @MetaItem,
-                            in_items: ~[@Item])
-                         -> ~[@Item] {
+                            item: @Item,
+                            push: |@Item|) {
     match mitem.node {
         MetaNameValue(_, ref l) => {
             cx.span_err(l.span, "unexpected value in `deriving`");
-            in_items
         }
-        MetaWord(_) | MetaList(_, []) => {
+        MetaWord(_) => {
             cx.span_warn(mitem.span, "empty trait list in `deriving`");
-            in_items
+        }
+        MetaList(_, ref titems) if titems.len() == 0 => {
+            cx.span_warn(mitem.span, "empty trait list in `deriving`");
         }
         MetaList(_, ref titems) => {
-            titems.rev_iter().fold(in_items, |in_items, &titem| {
+            for &titem in titems.rev_iter() {
                 match titem.node {
                     MetaNameValue(ref tname, _) |
                     MetaList(ref tname, _) |
                     MetaWord(ref tname) => {
                         macro_rules! expand(($func:path) => ($func(cx, titem.span,
-                                                                   titem, in_items)));
+                                                                   titem, item,
+                                                                   |i| push(i))));
                         match tname.get() {
                             "Clone" => expand!(clone::expand_deriving_clone),
                             "DeepClone" => expand!(clone::expand_deriving_deep_clone),
 
                             "IterBytes" => expand!(iter_bytes::expand_deriving_iter_bytes),
+                            "Hash" => expand!(hash::expand_deriving_hash),
 
                             "Encodable" => expand!(encodable::expand_deriving_encodable),
                             "Decodable" => expand!(decodable::expand_deriving_decodable),
@@ -94,12 +98,11 @@ pub fn expand_meta_deriving(cx: &mut ExtCtxt,
                             ref tname => {
                                 cx.span_err(titem.span, format!("unknown \
                                     `deriving` trait: `{}`", *tname));
-                                in_items
                             }
-                        }
+                        };
                     }
                 }
-            })
+            }
         }
     }
 }

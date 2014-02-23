@@ -19,14 +19,14 @@
 
 #[feature(macro_rules, managed_boxes)];
 
-#[cfg(test)] extern mod extra;
-
-extern mod serialize;
+extern crate serialize;
+#[cfg(test)] extern crate test;
 
 pub use bitv::Bitv;
 pub use btree::BTree;
 pub use deque::Deque;
 pub use dlist::DList;
+pub use enum_set::EnumSet;
 pub use list::List;
 pub use lru_cache::LruCache;
 pub use priority_queue::PriorityQueue;
@@ -38,6 +38,7 @@ pub mod bitv;
 pub mod btree;
 pub mod deque;
 pub mod dlist;
+pub mod enum_set;
 pub mod list;
 pub mod lru_cache;
 pub mod priority_queue;

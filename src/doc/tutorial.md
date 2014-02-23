@@ -57,8 +57,8 @@ they don't contain references to names that aren't actually defined.
 
 # Getting started
 
-> **NOTE**: The tarball and installer links are for the most recent release,
-> not master.
+> **WARNING**: The tarball and installer links are for the most recent
+> release, not master. To use master, you **must** build from [git].
 
 The Rust compiler currently must be built from a [tarball] or [git], unless
 you are on Windows, in which case using the [installer][win-exe] is
@@ -293,7 +293,7 @@ braced block gives the whole block the value of that last expression.
 
 Put another way, the semicolon in Rust *ignores the value of an expression*.
 Thus, if the branches of the `if` had looked like `{ 4; }`, the above example
-would simply assign `()` (nil or void) to `price`. But without the semicolon, each
+would simply assign `()` (unit or void) to `price`. But without the semicolon, each
 branch has a different value, and `price` gets the value of the branch that
 was taken.
 
@@ -352,7 +352,7 @@ before the opening and after the closing quote, and can contain any sequence of
 characters except their closing delimiter.  More on strings
 [later](#vectors-and-strings).
 
-The nil type, written `()`, has a single value, also written `()`.
+The unit type, written `()`, has a single value, also written `()`.
 
 ## Operators
 
@@ -495,8 +495,7 @@ reject the previous example if the arm with the wildcard pattern was
 omitted.
 
 A powerful application of pattern matching is *destructuring*:
-matching in order to bind names to the contents of data
-types.
+matching in order to bind names to the contents of data types.
 
 > ***Note:*** The following code makes use of tuples (`(f64, f64)`) which
 > are explained in section 5.3. For now you can think of tuples as a list of
@@ -582,6 +581,32 @@ loop {
 This code prints out a weird sequence of numbers and stops as soon as
 it finds one that can be divided by five.
 
+There is also a for-loop that can be used to iterate over a range of numbers:
+
+~~~~
+for n in range(0, 5) {
+    println!("{}", n);
+}
+~~~~
+
+The snippet above prints integer numbers under 5 starting at 0.
+
+More generally, a for loop works with anything implementing the `Iterator` trait.
+Data structures can provide one or more methods that return iterators over
+their contents. For example, strings support iteration over their contents in
+various ways:
+
+~~~~
+let s = "Hello";
+for c in s.chars() {
+    println!("{}", c);
+}
+~~~~
+
+The snippet above prints the characters in "Hello" vertically, adding a new
+line after each character.
+
+
 # Data structures
 
 ## Structs
@@ -647,8 +672,43 @@ match mypoint {
 
 ## Enums
 
-Enums are datatypes that have several alternate representations. For
-example, consider the following type:
+Enums are datatypes with several alternate representations. A simple `enum`
+defines one or more constants, all of which have the same type:
+
+~~~~
+enum Direction {
+    North,
+    East,
+    South,
+    West
+}
+~~~~
+
+Each variant of this enum has a unique and constant integral discriminator
+value. If no explicit discriminator is specified for a variant, the value
+defaults to the value of the previous variant plus one. If the first variant
+does not have a discriminator, it defaults to 0. For example, the value of
+`North` is 0, `East` is 1, `South` is 2, and `West` is 3.
+
+When an enum has simple integer discriminators, you can apply the `as` cast
+operator to convert a variant to its discriminator value as an `int`:
+
+~~~~
+# enum Direction { North }
+println!( "{:?} => {}", North, North as int );
+~~~~
+
+It is possible to set the discriminator values to chosen constant values:
+
+~~~~
+enum Color {
+  Red = 0xff0000,
+  Green = 0x00ff00,
+  Blue = 0x0000ff
+}
+~~~~
+
+Variants do not have to be simple values; they may be more complex:
 
 ~~~~
 # struct Point { x: f64, y: f64 }
@@ -664,50 +724,14 @@ two `Point` structs. The run-time representation of such a value
 includes an identifier of the actual form that it holds, much like the
 "tagged union" pattern in C, but with better static guarantees.
 
-The above declaration will define a type `Shape` that can refer to
-such shapes, and two functions, `Circle` and `Rectangle`, which can be
-used to construct values of the type (taking arguments of the
-specified types). So `Circle(Point { x: 0.0, y: 0.0 }, 10.0)` is the way to
-create a new circle.
+This declaration defines a type `Shape` that can refer to such shapes, and two
+functions, `Circle` and `Rectangle`, which can be used to construct values of
+the type. To create a new Circle, write `Circle(Point { x: 0.0, y: 0.0 },
+10.0)`.
 
-Enum variants need not have parameters. This `enum` declaration,
-for example, is equivalent to a C enum:
-
-~~~~
-enum Direction {
-    North,
-    East,
-    South,
-    West
-}
-~~~~
-
-This declaration defines `North`, `East`, `South`, and `West` as constants,
-all of which have type `Direction`.
-
-When an enum is C-like (that is, when none of the variants have
-parameters), it is possible to explicitly set the discriminator values
-to a constant value:
-
-~~~~
-enum Color {
-  Red = 0xff0000,
-  Green = 0x00ff00,
-  Blue = 0x0000ff
-}
-~~~~
-
-If an explicit discriminator is not specified for a variant, the value
-defaults to the value of the previous variant plus one. If the first
-variant does not have a discriminator, it defaults to 0. For example,
-the value of `North` is 0, `East` is 1, `South` is 2, and `West` is 3.
-
-When an enum is C-like, you can apply the `as` cast operator to
-convert it to its discriminator value as an `int`.
-
-For enum types with multiple variants, destructuring is the only way to
-get at their contents. All variant constructors can be used as
-patterns, as in this definition of `area`:
+All of these variant constructors may be used as patterns. The only way to
+access the contents of an enum instance is the destructuring of a match. For
+example:
 
 ~~~~
 use std::f64;
@@ -721,10 +745,8 @@ fn area(sh: Shape) -> f64 {
 }
 ~~~~
 
-You can write a lone `_` to ignore an individual field, and can
-ignore all fields of a variant like: `Circle(..)`. As in their
-introduction form, nullary enum patterns are written without
-parentheses.
+Use a lone `_` to ignore an individual field. Ignore all fields of a variant
+like: `Circle(..)`. Nullary enum patterns are written without parentheses:
 
 ~~~~
 # struct Point { x: f64, y: f64 }
@@ -855,7 +877,7 @@ fn line(a: int, b: int, x: int) -> int {
 It's better Rust style to write a return value this way instead of
 writing an explicit `return`. The utility of `return` comes in when
 returning early from a function. Functions that do not return a value
-are said to return nil, `()`, and both the return type and the return
+are said to return unit, `()`, and both the return type and the return
 value may be omitted from the definition. The following two functions
 are equivalent.
 
@@ -1753,6 +1775,24 @@ closures, but they also own them: that is, no other code can access
 them. Owned closures are used in concurrent code, particularly
 for spawning [tasks][tasks].
 
+Closures can be used to spawn tasks.
+A practical example of this pattern is found when using the `spawn` function,
+which starts a new task.
+
+~~~~
+use std::task::spawn;
+
+// proc is the closure which will be spawned.
+spawn(proc() {
+    debug!("I'm a new task")
+});
+~~~~
+
+> ***Note:*** If you want to see the output of `debug!` statements, you will need to turn on
+> `debug!` logging.  To enable `debug!` logging, set the RUST_LOG environment
+> variable to the name of your crate, which, for a file named `foo.rs`, will be
+> `foo` (e.g., with bash, `export RUST_LOG=foo`).
+
 ## Closure compatibility
 
 Rust closures have a convenient subtyping property: you can pass any kind of
@@ -1773,45 +1813,6 @@ call_twice(function);
 > ***Note:*** Both the syntax and the semantics will be changing
 > in small ways. At the moment they can be unsound in some
 > scenarios, particularly with non-copyable types.
-
-## Do syntax
-
-The `do` expression makes it easier to call functions that take procedures
-as arguments.
-
-Consider this function that takes a procedure:
-
-~~~~
-fn call_it(op: proc(v: int)) {
-    op(10)
-}
-~~~~
-
-As a caller, if we use a closure to provide the final operator
-argument, we can write it in a way that has a pleasant, block-like
-structure.
-
-~~~~
-# fn call_it(op: proc(v: int)) { }
-call_it(proc(n) {
-    println!("{}", n);
-});
-~~~~
-
-A practical example of this pattern is found when using the `spawn` function,
-which starts a new task.
-
-~~~~
-use std::task::spawn;
-spawn(proc() {
-    debug!("I'm a new task")
-});
-~~~~
-
-If you want to see the output of `debug!` statements, you will need to turn on
-`debug!` logging.  To enable `debug!` logging, set the RUST_LOG environment
-variable to the name of your crate, which, for a file named `foo.rs`, will be
-`foo` (e.g., with bash, `export RUST_LOG=foo`).
 
 # Methods
 
@@ -2584,7 +2585,7 @@ As you can see, your module hierarchy is now three modules deep: There is the cr
 function, and the module `farm`. The module `farm` also contains two functions and a third module `barn`,
 which contains a function `hay`.
 
-(In case you already stumbled over `extern mod`: It isn't directly related to a bare `mod`, we'll get to it later. )
+(In case you already stumbled over `extern crate`: It isn't directly related to a bare `mod`, we'll get to it later. )
 
 ## Paths and visibility
 
@@ -2682,25 +2683,24 @@ manual.
 
 ## Files and modules
 
-One important aspect about Rusts module system is that source files are not important:
-You define a module hierarchy, populate it with all your definitions, define visibility,
-maybe put in a `fn main()`, and that's it: No need to think about source files.
+One important aspect of Rust's module system is that source files and modules are not the same thing. You define a module hierarchy, populate it with all your definitions, define visibility, maybe put in a `fn main()`, and that's it.
 
-The only file that's relevant is the one that contains the body of your crate root,
-and it's only relevant because you have to pass that file to `rustc` to compile your crate.
+The only file that's relevant when compiling is the one that contains the body
+of your crate root, and it's only relevant because you have to pass that file
+to `rustc` to compile your crate.
 
-And in principle, that's all you need: You can write any Rust program as one giant source file that contains your
-crate root and everything below it in `mod ... { ... }` declarations.
+In principle, that's all you need: You can write any Rust program as one giant source file that contains your
+crate root and everything else in `mod ... { ... }` declarations.
 
-However, in practice you usually want to split you code up into multiple source files to make it more manageable.
-In order to do that, Rust allows you to move the body of any module into it's own source file, which works like this:
+However, in practice you usually want to split up your code into multiple
+source files to make it more manageable. Rust allows you to move the body of
+any module into its own source file. If you declare a module without its body,
+like `mod foo;`, the compiler will look for the files `foo.rs` and `foo/mod.rs`
+inside some directory (usually the same as of the source file containing the
+`mod foo;` declaration). If it finds either, it uses the content of that file
+as the body of the module. If it finds both, that's a compile error.
 
-If you declare a module without its body, like `mod foo;`, the compiler will look for the
-files `foo.rs` and `foo/mod.rs` inside some directory (usually the same as of the source file containing
-the `mod foo;`). If it finds either, it uses the content of that file as the body of the module.
-If it finds both, that's a compile error.
-
-So, if we want to move the content of `mod farm` into it's own file, it would look like this:
+To move the content of `mod farm` into its own file, you can write:
 
 ~~~~ {.ignore}
 // `main.rs` - contains body of the crate root
@@ -2725,17 +2725,14 @@ pub mod barn {
 
 In short, `mod foo;` is just syntactic sugar for `mod foo { /* content of <...>/foo.rs or <...>/foo/mod.rs */ }`.
 
-This also means that having two or more identical `mod foo;` somewhere
-in your crate hierarchy is generally a bad idea,
-just like copy-and-paste-ing a module into two or more places is one.
+This also means that having two or more identical `mod foo;` declarations
+somewhere in your crate hierarchy is generally a bad idea,
+just like copy-and-paste-ing a module into multiple places is a bad idea.
 Both will result in duplicate and mutually incompatible definitions.
 
-The directory the compiler looks in for those two files is determined by starting with
-the same directory as the source file that contains the `mod foo;` declaration, and concatenating to that a
-path equivalent to the relative path of all nested `mod { ... }` declarations the `mod foo;`
-is contained in, if any.
-
-For example, given a file with this module body:
+When `rustc` resolves these module declarations, it starts by looking in the
+parent directory of the file containing the `mod foo` declaration. For example,
+given a file with the module body:
 
 ~~~ {.ignore}
 // `src/main.rs`
@@ -2748,7 +2745,7 @@ mod animals {
 }
 ~~~
 
-The compiler would then try all these files:
+The compiler will look for these files, in this order:
 
 ~~~ {.notrust}
 src/plants.rs
@@ -2761,9 +2758,9 @@ src/animals/mammals/humans.rs
 src/animals/mammals/humans/mod.rs
 ~~~
 
-Keep in mind that identical module hierachies can still lead to different path lookups
-depending on how and where you've moved a module body to its own file.
-For example, if we move the `animals` module above into its own file...
+Keep in mind that identical module hierarchies can still lead to different path
+lookups depending on how and where you've moved a module body to its own file.
+For example, if you move the `animals` module into its own file:
 
 ~~~ {.ignore}
 // `src/main.rs`
@@ -2779,21 +2776,21 @@ mod mammals {
 }
 ~~~
 
-...then the source files of `mod animals`'s submodules can
-either be placed right next to that of its parents, or in a subdirectory if `animals` source file is:
+...then the source files of `mod animals`'s submodules can either be in the same directory as the animals source file or in a subdirectory of its directory. If the animals file is `src/animals.rs`, `rustc` will look for:
 
 ~~~ {.notrust}
-src/plants.rs
-src/plants/mod.rs
-
-src/animals.rs - if file sits next to that of parent module's:
+src/animals.rs
     src/fish.rs
     src/fish/mod.rs
 
     src/mammals/humans.rs
     src/mammals/humans/mod.rs
+~~
 
-src/animals/mod.rs - if file is in it's own subdirectory:
+If the animals file is `src/animals/mod.rs`, `rustc` will look for:
+
+~~ {.notrust}
+src/animals/mod.rs
     src/animals/fish.rs
     src/animals/fish/mod.rs
 
@@ -2802,11 +2799,11 @@ src/animals/mod.rs - if file is in it's own subdirectory:
 
 ~~~
 
-These rules allow you to have both small modules that only need
-to consist of one source file each and can be conveniently placed right next to each other,
-and big complicated modules that group the source files of submodules in subdirectories.
+These rules allow you to write small modules consisting of single source files which can live in the same directory as well as large modules which group submodule source files in subdirectories.
 
-If you need to circumvent the defaults, you can also overwrite the path a `mod foo;` would take:
+If you need to override where `rustc` will look for the file containing a
+module's source code, use the `path` compiler directive. For example, to load a
+`classified` module from a different file:
 
 ~~~ {.ignore}
 #[path="../../area51/alien.rs"]
@@ -3026,20 +3023,20 @@ as there really is no reason to start from scratch each time you start a new pro
 
 In Rust terminology, we need a way to refer to other crates.
 
-For that, Rust offers you the `extern mod` declaration:
+For that, Rust offers you the `extern crate` declaration:
 
 ~~~
-extern mod extra;
-// extra ships with Rust, you'll find more details further down.
+extern crate num;
+// `num` ships with Rust (much like `extra`; more details further down).
 
 fn main() {
     // The rational number '1/2':
-    let one_half = ::extra::rational::Ratio::new(1, 2);
+    let one_half = ::num::rational::Ratio::new(1, 2);
 }
 ~~~
 
-Despite its name, `extern mod` is a distinct construct from regular `mod` declarations:
-A statement of the form `extern mod foo;` will cause `rustc` to search for the crate `foo`,
+Despite its name, `extern crate` is a distinct construct from regular `mod` declarations:
+A statement of the form `extern crate foo;` will cause `rustc` to search for the crate `foo`,
 and if it finds a matching binary it lets you use it from inside your crate.
 
 The effect it has on your module hierarchy mirrors aspects of both `mod` and `use`:
@@ -3047,22 +3044,22 @@ The effect it has on your module hierarchy mirrors aspects of both `mod` and `us
 - Like `mod`, it causes `rustc` to actually emit code:
   The linkage information the binary needs to use the library `foo`.
 
-- But like `use`, all `extern mod` statements that refer to the same library are interchangeable,
+- But like `use`, all `extern crate` statements that refer to the same library are interchangeable,
   as each one really just presents an alias to an external module (the crate root of the library
   you're linking against).
 
 Remember how `use`-statements have to go before local declarations because the latter shadows the former?
-Well, `extern mod` statements also have their own rules in that regard:
-Both `use` and local declarations can shadow them, so the rule is that `extern mod` has to go in front
+Well, `extern crate` statements also have their own rules in that regard:
+Both `use` and local declarations can shadow them, so the rule is that `extern crate` has to go in front
 of both `use` and local declarations.
 
 Which can result in something like this:
 
 ~~~
-extern mod extra;
+extern crate num;
 
 use farm::dog;
-use extra::rational::Ratio;
+use num::rational::Ratio;
 
 mod farm {
     pub fn dog() { println!("woof"); }
@@ -3076,11 +3073,6 @@ fn main() {
 
 It's a bit weird, but it's the result of shadowing rules that have been set that way because
 they model most closely what people expect to shadow.
-
-## Package ids
-
-If you use `extern mod`, per default `rustc` will look for libraries in the library search path (which you can
-extend with the `-L` switch).
 
 ## Crate metadata and settings
 
@@ -3099,21 +3091,20 @@ Therefore, if you plan to compile your crate as a library, you should annotate i
 // `lib.rs`
 
 # #[crate_type = "lib"];
-// Package ID
 #[crate_id = "farm#2.5"];
 
 // ...
 # fn farm() {}
 ~~~~
 
-You can also specify package ID information in a `extern mod` statement.  For
-example, these `extern mod` statements would both accept and select the
+You can also specify crate id information in a `extern crate` statement.  For
+example, these `extern crate` statements would both accept and select the
 crate define above:
 
 ~~~~ {.ignore}
-extern mod farm;
-extern mod farm = "farm#2.5";
-extern mod my_farm = "farm";
+extern crate farm;
+extern crate farm = "farm#2.5";
+extern crate my_farm = "farm";
 ~~~~
 
 Other crate settings and metadata include things like enabling/disabling certain errors or warnings,
@@ -3141,14 +3132,14 @@ We define two crates, and use one of them as a library in the other.
 ~~~~
 // `world.rs`
 #[crate_id = "world#0.42"];
-# extern mod extra;
+# extern crate extra;
 pub fn explore() -> &'static str { "world" }
 # fn main() {}
 ~~~~
 
 ~~~~ {.ignore}
 // `main.rs`
-extern mod world;
+extern crate world;
 fn main() { println!("hello {}", world::explore()); }
 ~~~~
 
@@ -3164,7 +3155,7 @@ Now compile and run like this (adjust to your platform if necessary):
 Notice that the library produced contains the version in the file name
 as well as an inscrutable string of alphanumerics. As explained in the previous paragraph,
 these are both part of Rust's library versioning scheme. The alphanumerics are
-a hash representing the crates package ID.
+a hash representing the crates id.
 
 ## The standard library and the prelude
 
@@ -3177,7 +3168,7 @@ in the `std` library, which is a crate that ships with Rust.
 The only magical thing that happens is that `rustc` automatically inserts this line into your crate root:
 
 ~~~ {.ignore}
-extern mod std;
+extern crate std;
 ~~~
 
 As well as this line into every module body:
@@ -3227,15 +3218,14 @@ See the [API documentation][stddoc] for details.
 
 ## The extra library
 
-Rust also ships with the [extra library], an accumulation of useful things,
+Rust ships with crates such as the [extra library], an accumulation of useful things,
 that are however not important enough to deserve a place in the standard
-library.  You can use them by linking to `extra` with an `extern mod extra;`.
+library.  You can link to a library such as `extra` with an `extern crate extra;`.
 
 [extra library]: extra/index.html
 
 Right now `extra` contains those definitions directly, but in the future it will likely just
-re-export a bunch of 'officially blessed' crates that get managed with a
-package manager.
+re-export a bunch of 'officially blessed' crates that get managed with a package manager.
 
 # What next?
 
@@ -3248,7 +3238,6 @@ guides on individual topics.
 * [Macros][macros]
 * [The foreign function interface][ffi]
 * [Containers and iterators][container]
-* [Error-handling and Conditions][conditions]
 * [Documenting Rust code][rustdoc]
 * [Testing Rust code][testing]
 * [The Rust Runtime][runtime]
@@ -3261,7 +3250,6 @@ There is further documentation on the [wiki], however those tend to be even more
 [macros]: guide-macros.html
 [ffi]: guide-ffi.html
 [container]: guide-container.html
-[conditions]: guide-conditions.html
 [testing]: guide-testing.html
 [runtime]: guide-runtime.html
 [rustdoc]: rustdoc.html

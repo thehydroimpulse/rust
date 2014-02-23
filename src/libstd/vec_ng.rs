@@ -11,20 +11,21 @@
 // Migrate documentation over from `std::vec` when it is removed.
 #[doc(hidden)];
 
+use cast::{forget, transmute};
+use clone::Clone;
+use cmp::{Eq, Ordering, TotalEq, TotalOrd};
+use container::Container;
+use iter::{DoubleEndedIterator, FromIterator, Iterator};
+use libc::{free, c_void};
+use mem::{size_of, move_val_init};
+use num::CheckedMul;
 use ops::Drop;
 use option::{None, Option, Some};
-use clone::Clone;
-use iter::{DoubleEndedIterator, Iterator};
-use num::CheckedMul;
-use container::Container;
-use mem::size_of;
-use cast::{forget, transmute};
+use ptr::RawPtr;
+use ptr;
 use rt::global_heap::{malloc_raw, realloc_raw};
-use vec::{ImmutableVector, Items, MutableVector};
 use unstable::raw::Slice;
-use ptr::{offset, read_ptr};
-use libc::{free, c_void};
-use unstable::intrinsics::move_val_init;
+use vec::{ImmutableVector, Items, MutItems, MutableVector, RevItems};
 
 pub struct Vec<T> {
     priv len: uint,
@@ -70,6 +71,55 @@ impl<T: Clone> Vec<T> {
             }
             xs
         }
+    }
+
+    #[inline]
+    pub fn push_all(&mut self, other: &[T]) {
+        for element in other.iter() {
+            self.push((*element).clone())
+        }
+    }
+}
+
+impl<T:Clone> Clone for Vec<T> {
+    fn clone(&self) -> Vec<T> {
+        let mut vector = Vec::with_capacity(self.len());
+        for element in self.iter() {
+            vector.push((*element).clone())
+        }
+        vector
+    }
+}
+
+impl<T> FromIterator<T> for Vec<T> {
+    fn from_iterator<I:Iterator<T>>(iterator: &mut I) -> Vec<T> {
+        let (lower, _) = iterator.size_hint();
+        let mut vector = Vec::with_capacity(lower);
+        for element in *iterator {
+            vector.push(element)
+        }
+        vector
+    }
+}
+
+impl<T:Eq> Eq for Vec<T> {
+    #[inline]
+    fn eq(&self, other: &Vec<T>) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl<T:TotalEq> TotalEq for Vec<T> {
+    #[inline]
+    fn equals(&self, other: &Vec<T>) -> bool {
+        self.as_slice().equals(&other.as_slice())
+    }
+}
+
+impl<T:TotalOrd> TotalOrd for Vec<T> {
+    #[inline]
+    fn cmp(&self, other: &Vec<T>) -> Ordering {
+        self.as_slice().cmp(&other.as_slice())
     }
 }
 
@@ -117,7 +167,7 @@ impl<T> Vec<T> {
         } else {
             unsafe {
                 self.len -= 1;
-                Some(read_ptr(self.as_slice().unsafe_ref(self.len())))
+                Some(ptr::read(self.as_slice().unsafe_ref(self.len())))
             }
         }
     }
@@ -136,7 +186,7 @@ impl<T> Vec<T> {
         }
 
         unsafe {
-            let end = offset(self.ptr as *T, self.len as int) as *mut T;
+            let end = (self.ptr as *T).offset(self.len as int) as *mut T;
             move_val_init(&mut *end, value);
             self.len += 1;
         }
@@ -147,7 +197,7 @@ impl<T> Vec<T> {
             let mut i = len;
             // drop any extra elements
             while i < self.len {
-                read_ptr(self.as_slice().unsafe_ref(i));
+                ptr::read(self.as_slice().unsafe_ref(i));
                 i += 1;
             }
         }
@@ -180,15 +230,124 @@ impl<T> Vec<T> {
     pub unsafe fn set_len(&mut self, len: uint) {
         self.len = len;
     }
+
+    #[inline]
+    pub fn get<'a>(&'a self, index: uint) -> &'a T {
+        &self.as_slice()[index]
+    }
+
+    #[inline]
+    pub fn get_mut<'a>(&'a mut self, index: uint) -> &'a mut T {
+        &mut self.as_mut_slice()[index]
+    }
+
+    #[inline]
+    pub fn iter<'a>(&'a self) -> Items<'a,T> {
+        self.as_slice().iter()
+    }
+
+    #[inline]
+    pub fn mut_iter<'a>(&'a mut self) -> MutItems<'a,T> {
+        self.as_mut_slice().mut_iter()
+    }
+
+    #[inline]
+    pub fn sort_by(&mut self, compare: |&T, &T| -> Ordering) {
+        self.as_mut_slice().sort_by(compare)
+    }
+
+    #[inline]
+    pub fn slice<'a>(&'a self, start: uint, end: uint) -> &'a [T] {
+        self.as_slice().slice(start, end)
+    }
+
+    #[inline]
+    pub fn tail<'a>(&'a self) -> &'a [T] {
+        self.as_slice().tail()
+    }
+
+    #[inline]
+    pub fn last<'a>(&'a self) -> Option<&'a T> {
+        self.as_slice().last()
+    }
+
+    #[inline]
+    pub fn mut_last<'a>(&'a mut self) -> Option<&'a mut T> {
+        self.as_mut_slice().mut_last()
+    }
+
+    #[inline]
+    pub fn swap_remove(&mut self, index: uint) -> T {
+        let length = self.len();
+        if index >= length {
+            fail!("Vec::swap_remove - index {} >= length {}", index, length);
+        }
+        if index < length - 1 {
+            self.as_mut_slice().swap(index, length - 1);
+        }
+        self.pop().unwrap()
+    }
+
+    #[inline]
+    pub fn unshift(&mut self, element: T) {
+        self.insert(0, element)
+    }
+
+    pub fn insert(&mut self, index: uint, element: T) {
+        let len = self.len();
+        assert!(index <= len);
+        // space for the new element
+        self.reserve_exact(len + 1);
+
+        unsafe { // infallible
+            // The spot to put the new value
+            {
+                let slice = self.as_mut_slice();
+                let p = slice.as_mut_ptr().offset(index as int);
+                // Shift everything over to make space. (Duplicating the
+                // `index`th element into two consecutive places.)
+                ptr::copy_memory(p.offset(1), &*p, len - index);
+                // Write it in, overwriting the first copy of the `index`th
+                // element.
+                move_val_init(&mut *p, element);
+            }
+            self.set_len(len + 1);
+        }
+    }
+
+    #[inline]
+    pub fn rev_iter<'a>(&'a self) -> RevItems<'a,T> {
+        self.as_slice().rev_iter()
+    }
+
+    #[inline]
+    pub fn map<U>(&self, f: |t: &T| -> U) -> Vec<U> {
+        self.iter().map(f).collect()
+    }
+
+    pub fn push_all_move(&mut self, other: Vec<T>) {
+        for element in other.move_iter() {
+            self.push(element)
+        }
+    }
+
+    pub fn slice_from<'a>(&'a self, start: uint) -> &'a [T] {
+        self.as_slice().slice_from(start)
+    }
 }
 
+#[inline]
+pub fn append<T:Clone>(mut first: Vec<T>, second: &[T]) -> Vec<T> {
+    first.push_all(second);
+    first
+}
 
 #[unsafe_destructor]
 impl<T> Drop for Vec<T> {
     fn drop(&mut self) {
         unsafe {
             for x in self.as_mut_slice().iter() {
-                read_ptr(x);
+                ptr::read(x);
             }
             free(self.ptr as *mut c_void)
         }
@@ -204,7 +363,7 @@ impl<T> Iterator<T> for MoveItems<T> {
     #[inline]
     fn next(&mut self) -> Option<T> {
         unsafe {
-            self.iter.next().map(|x| read_ptr(x))
+            self.iter.next().map(|x| ptr::read(x))
         }
     }
 
@@ -218,7 +377,7 @@ impl<T> DoubleEndedIterator<T> for MoveItems<T> {
     #[inline]
     fn next_back(&mut self) -> Option<T> {
         unsafe {
-            self.iter.next_back().map(|x| read_ptr(x))
+            self.iter.next_back().map(|x| ptr::read(x))
         }
     }
 }
@@ -233,3 +392,4 @@ impl<T> Drop for MoveItems<T> {
         }
     }
 }
+

@@ -13,7 +13,6 @@
 
 use syntax;
 use syntax::ast;
-use syntax::ast_map;
 use syntax::ast_util;
 use syntax::attr;
 use syntax::attr::AttributeMethods;
@@ -26,7 +25,6 @@ use rustc::metadata::csearch;
 use rustc::metadata::decoder;
 
 use std;
-use std::hashmap::HashMap;
 
 use doctree;
 use visit_ast;
@@ -69,7 +67,7 @@ impl<T: Clean<U>, U> Clean<~[U]> for syntax::opt_vec::OptVec<T> {
 pub struct Crate {
     name: ~str,
     module: Option<Item>,
-    externs: HashMap<ast::CrateNum, ExternalCrate>,
+    externs: ~[(ast::CrateNum, ExternalCrate)],
 }
 
 impl<'a> Clean<Crate> for visit_ast::RustdocVisitor<'a> {
@@ -77,9 +75,9 @@ impl<'a> Clean<Crate> for visit_ast::RustdocVisitor<'a> {
         use syntax::attr::find_crateid;
         let cx = local_data::get(super::ctxtkey, |x| *x.unwrap());
 
-        let mut externs = HashMap::new();
+        let mut externs = ~[];
         cx.sess.cstore.iter_crate_data(|n, meta| {
-            externs.insert(n, meta.clean());
+            externs.push((n, meta.clean()));
         });
 
         Crate {
@@ -182,6 +180,7 @@ pub enum ItemEnum {
     VariantItem(Variant),
     ForeignFunctionItem(Function),
     ForeignStaticItem(Static),
+    MacroItem(Macro),
 }
 
 #[deriving(Clone, Encodable, Decodable)]
@@ -207,7 +206,8 @@ impl Clean<Item> for doctree::Module {
                        self.fns.clean(), self.foreigns.clean().concat_vec(),
                        self.mods.clean(), self.typedefs.clean(),
                        self.statics.clean(), self.traits.clean(),
-                       self.impls.clean(), self.view_items.clean()].concat_vec()
+                       self.impls.clean(), self.view_items.clean(),
+                       self.macros.clean()].concat_vec()
             })
         }
     }
@@ -342,7 +342,9 @@ impl Clean<Item> for ast::Method {
             _ => self.decl.inputs.slice_from(1)
         };
         let decl = FnDecl {
-            inputs: inputs.iter().map(|x| x.clean()).collect(),
+            inputs: Arguments {
+                values: inputs.iter().map(|x| x.clean()).collect(),
+            },
             output: (self.decl.output.clean()),
             cf: self.decl.cf.clean(),
             attrs: ~[]
@@ -378,7 +380,9 @@ impl Clean<Item> for ast::TypeMethod {
             _ => self.decl.inputs.slice_from(1)
         };
         let decl = FnDecl {
-            inputs: inputs.iter().map(|x| x.clean()).collect(),
+            inputs: Arguments {
+                values: inputs.iter().map(|x| x.clean()).collect(),
+            },
             output: (self.decl.output.clean()),
             cf: self.decl.cf.clean(),
             attrs: ~[]
@@ -472,16 +476,23 @@ impl Clean<ClosureDecl> for ast::ClosureTy {
 
 #[deriving(Clone, Encodable, Decodable)]
 pub struct FnDecl {
-    inputs: ~[Argument],
+    inputs: Arguments,
     output: Type,
     cf: RetStyle,
     attrs: ~[Attribute]
 }
 
+#[deriving(Clone, Encodable, Decodable)]
+pub struct Arguments {
+    values: ~[Argument],
+}
+
 impl Clean<FnDecl> for ast::FnDecl {
     fn clean(&self) -> FnDecl {
         FnDecl {
-            inputs: self.inputs.iter().map(|x| x.clean()).collect(),
+            inputs: Arguments {
+                values: self.inputs.iter().map(|x| x.clean()).collect(),
+            },
             output: (self.output.clean()),
             cf: self.cf.clean(),
             attrs: ~[]
@@ -604,7 +615,7 @@ pub enum Type {
         typarams: Option<~[TyParamBound]>,
         fqn: ~[~str],
         kind: TypeKind,
-        crate: ast::CrateNum,
+        krate: ast::CrateNum,
     },
     // I have no idea how to usefully use this.
     TyParamBinder(ast::NodeId),
@@ -876,7 +887,7 @@ fn path_to_str(p: &ast::Path) -> ~str {
 
     let mut s = ~"";
     let mut first = true;
-    for i in p.segments.iter().map(|x| token::get_ident(x.identifier.name)) {
+    for i in p.segments.iter().map(|x| token::get_ident(x.identifier)) {
         if !first || p.global {
             s.push_str("::");
         } else {
@@ -889,8 +900,7 @@ fn path_to_str(p: &ast::Path) -> ~str {
 
 impl Clean<~str> for ast::Ident {
     fn clean(&self) -> ~str {
-        let string = token::get_ident(self.name);
-        string.get().to_owned()
+        token::get_ident(*self).get().to_owned()
     }
 }
 
@@ -1201,8 +1211,7 @@ fn resolve_type(path: Path, tpbs: Option<~[TyParamBound]>,
     let d = match def_map.get().find(&id) {
         Some(k) => k,
         None => {
-            debug!("could not find {:?} in defmap (`{}`)", id,
-                   syntax::ast_map::node_id_to_str(tycx.items, id, cx.sess.intr()));
+            debug!("could not find {:?} in defmap (`{}`)", id, tycx.map.node_to_str(id));
             fail!("Unexpected failure: unresolved id not in defmap (this is a bug!)")
         }
     };
@@ -1232,14 +1241,9 @@ fn resolve_type(path: Path, tpbs: Option<~[TyParamBound]>,
         ResolvedPath{ path: path, typarams: tpbs, id: def_id.node }
     } else {
         let fqn = csearch::get_item_path(tycx, def_id);
-        let fqn = fqn.move_iter().map(|i| {
-            match i {
-                ast_map::PathMod(id) | ast_map::PathName(id) |
-                ast_map::PathPrettyName(id, _) => id.clean()
-            }
-        }).to_owned_vec();
+        let fqn = fqn.move_iter().map(|i| i.to_str()).to_owned_vec();
         ExternalPath{ path: path, typarams: tpbs, fqn: fqn, kind: kind,
-                      crate: def_id.crate }
+                      krate: def_id.krate }
     }
 }
 
@@ -1258,5 +1262,25 @@ fn resolve_def(id: ast::NodeId) -> Option<ast::DefId> {
             def_map.get().find(&id).map(|&d| ast_util::def_id_of_def(d))
         }
         None => None
+    }
+}
+
+#[deriving(Clone, Encodable, Decodable)]
+pub struct Macro {
+    source: ~str,
+}
+
+impl Clean<Item> for doctree::Macro {
+    fn clean(&self) -> Item {
+        Item {
+            name: Some(self.name.clean()),
+            attrs: self.attrs.clean(),
+            source: self.where.clean(),
+            visibility: ast::Public.clean(),
+            id: self.id,
+            inner: MacroItem(Macro {
+                source: self.where.to_src(),
+            }),
+        }
     }
 }

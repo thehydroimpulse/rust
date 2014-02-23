@@ -17,11 +17,11 @@ use ext::deriving::generic::*;
 pub fn expand_deriving_clone(cx: &mut ExtCtxt,
                              span: Span,
                              mitem: @MetaItem,
-                             in_items: ~[@Item])
-                          -> ~[@Item] {
+                             item: @Item,
+                             push: |@Item|) {
     let trait_def = TraitDef {
-        cx: cx, span: span,
-
+        span: span,
+        attributes: ~[],
         path: Path::new(~["std", "clone", "Clone"]),
         additional_bounds: ~[],
         generics: LifetimeBounds::empty(),
@@ -39,17 +39,17 @@ pub fn expand_deriving_clone(cx: &mut ExtCtxt,
         ]
     };
 
-    trait_def.expand(mitem, in_items)
+    trait_def.expand(cx, mitem, item, push)
 }
 
 pub fn expand_deriving_deep_clone(cx: &mut ExtCtxt,
                                   span: Span,
                                   mitem: @MetaItem,
-                                  in_items: ~[@Item])
-    -> ~[@Item] {
+                                  item: @Item,
+                                  push: |@Item|) {
     let trait_def = TraitDef {
-        cx: cx, span: span,
-
+        span: span,
+        attributes: ~[],
         path: Path::new(~["std", "clone", "DeepClone"]),
         additional_bounds: ~[],
         generics: LifetimeBounds::empty(),
@@ -69,7 +69,7 @@ pub fn expand_deriving_deep_clone(cx: &mut ExtCtxt,
         ]
     };
 
-    trait_def.expand(mitem, in_items)
+    trait_def.expand(cx, mitem, item, push)
 }
 
 fn cs_clone(
@@ -99,30 +99,27 @@ fn cs_clone(
                                                                  name))
     }
 
-    match *all_fields {
-        [FieldInfo { name: None, .. }, ..] => {
-            // enum-like
-            let subcalls = all_fields.map(subcall);
-            cx.expr_call_ident(trait_span, ctor_ident, subcalls)
-        },
-        _ => {
-            // struct-like
-            let fields = all_fields.map(|field| {
-                let ident = match field.name {
-                    Some(i) => i,
-                    None => cx.span_bug(trait_span,
-                                        format!("unnamed field in normal struct in `deriving({})`",
-                                                name))
-                };
-                cx.field_imm(field.span, ident, subcall(field))
-            });
+    if all_fields.len() >= 1 && all_fields[0].name.is_none() {
+        // enum-like
+        let subcalls = all_fields.map(subcall);
+        cx.expr_call_ident(trait_span, ctor_ident, subcalls)
+    } else {
+        // struct-like
+        let fields = all_fields.map(|field| {
+            let ident = match field.name {
+                Some(i) => i,
+                None => cx.span_bug(trait_span,
+                                    format!("unnamed field in normal struct in `deriving({})`",
+                                            name))
+            };
+            cx.field_imm(field.span, ident, subcall(field))
+        });
 
-            if fields.is_empty() {
-                // no fields, so construct like `None`
-                cx.expr_ident(trait_span, ctor_ident)
-            } else {
-                cx.expr_struct_ident(trait_span, ctor_ident, fields)
-            }
+        if fields.is_empty() {
+            // no fields, so construct like `None`
+            cx.expr_ident(trait_span, ctor_ident)
+        } else {
+            cx.expr_struct_ident(trait_span, ctor_ident, fields)
         }
     }
 }

@@ -31,14 +31,15 @@ This API is completely unstable and subject to change.
 #[allow(unknown_features)]; // Note: remove it after a snapshot.
 #[feature(quote)];
 
-extern mod extra;
-extern mod flate;
-extern mod arena;
-extern mod syntax;
-extern mod serialize;
-extern mod sync;
-extern mod getopts;
-extern mod collections;
+extern crate extra;
+extern crate flate;
+extern crate arena;
+extern crate syntax;
+extern crate serialize;
+extern crate sync;
+extern crate getopts;
+extern crate collections;
+extern crate time;
 
 use back::link;
 use driver::session;
@@ -46,8 +47,8 @@ use middle::lint;
 
 use d = driver::driver;
 
+use std::cmp;
 use std::io;
-use std::num;
 use std::os;
 use std::str;
 use std::task;
@@ -141,6 +142,7 @@ pub fn usage(argv0: &str) {
     let message = format!("Usage: {} [OPTIONS] INPUT", argv0);
     println!("{}\n\
 Additional help:
+    -C help             Print codegen options
     -W help             Print 'lint' options and default settings
     -Z help             Print internal options for debugging rustc\n",
               getopts::usage(message, d::optgroups()));
@@ -163,12 +165,12 @@ Available lint options:
 
     let mut max_key = 0;
     for &(_, name) in lint_dict.iter() {
-        max_key = num::max(name.len(), max_key);
+        max_key = cmp::max(name.len(), max_key);
     }
     fn padded(max: uint, s: &str) -> ~str {
         " ".repeat(max - s.len()) + s
     }
-    println!("{}", "\nAvailable lint checks:\n"); // FIXME: #9970
+    println!("\nAvailable lint checks:\n");
     println!("    {}  {:7.7s}  {}",
              padded(max_key, "name"), "default", "meaning");
     println!("    {}  {:7.7s}  {}\n",
@@ -184,7 +186,7 @@ Available lint options:
 }
 
 pub fn describe_debug_flags() {
-    println!("{}", "\nAvailable debug options:\n"); // FIXME: #9970
+    println!("\nAvailable debug options:\n");
     let r = session::debugging_opts_map();
     for tuple in r.iter() {
         match *tuple {
@@ -192,6 +194,22 @@ pub fn describe_debug_flags() {
                 println!("    -Z {:>20s} -- {}", *name, *desc);
             }
         }
+    }
+}
+
+pub fn describe_codegen_flags() {
+    println!("\nAvailable codegen options:\n");
+    let mut cg = session::basic_codegen_options();
+    for &(name, parser, desc) in session::CG_OPTIONS.iter() {
+        // we invoke the parser function on `None` to see if this option needs
+        // an argument or not.
+        let (width, extra) = if parser(&mut cg, None) {
+            (25, "")
+        } else {
+            (21, "=val")
+        };
+        println!("    -C {:>width$s}{} -- {}", name.replace("_", "-"),
+                 extra, desc, width=width);
     }
 }
 
@@ -227,7 +245,13 @@ pub fn run_compiler(args: &[~str]) {
         return;
     }
 
-    if matches.opt_str("passes") == Some(~"list") {
+    let cg_flags = matches.opt_strs("C");
+    if cg_flags.iter().any(|x| x == &~"help") {
+        describe_codegen_flags();
+        return;
+    }
+
+    if cg_flags.contains(&~"passes=list") {
         unsafe { lib::llvm::llvm::LLVMRustPrintPasses(); }
         return;
     }
@@ -251,7 +275,7 @@ pub fn run_compiler(args: &[~str]) {
       _ => d::early_error("multiple input filenames provided")
     };
 
-    let sopts = d::build_session_options(binary, matches);
+    let sopts = d::build_session_options(matches);
     let sess = d::build_session(sopts, input_file_path);
     let odir = matches.opt_str("out-dir").map(|o| Path::new(o));
     let ofile = matches.opt_str("o").map(|o| Path::new(o));
@@ -348,8 +372,7 @@ pub fn monitor(f: proc()) {
     #[cfg(not(rtopt))]
     static STACK_SIZE: uint = 20000000; // 20MB
 
-    let mut task_builder = task::task();
-    task_builder.name("rustc");
+    let mut task_builder = task::task().named("rustc");
 
     // FIXME: Hacks on hacks. If the env is trying to override the stack size
     // then *don't* set it explicitly.

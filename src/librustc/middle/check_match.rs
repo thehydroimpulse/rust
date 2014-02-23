@@ -1,4 +1,4 @@
-// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2012-2014 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#[allow(non_camel_case_types)];
 
 use middle::const_eval::{compare_const_vals, lookup_const_by_id};
 use middle::const_eval::{eval_const_expr, const_val, const_bool, const_float};
@@ -18,12 +19,13 @@ use middle::typeck::method_map;
 use middle::moves;
 use util::ppaux::ty_to_str;
 
+use std::cmp;
 use std::iter;
-use std::num;
 use std::vec;
 use syntax::ast::*;
 use syntax::ast_util::{unguarded_pat, walk_pat};
 use syntax::codemap::{DUMMY_SP, Span};
+use syntax::parse::token;
 use syntax::visit;
 use syntax::visit::{Visitor, FnKind};
 
@@ -52,13 +54,13 @@ impl Visitor<()> for CheckMatchVisitor {
 pub fn check_crate(tcx: ty::ctxt,
                    method_map: method_map,
                    moves_map: moves::MovesMap,
-                   crate: &Crate) {
+                   krate: &Crate) {
     let cx = @MatchCheckCtxt {tcx: tcx,
                               method_map: method_map,
                               moves_map: moves_map};
     let mut v = CheckMatchVisitor { cx: cx };
 
-    visit::walk_crate(&mut v, crate, ());
+    visit::walk_crate(&mut v, krate, ());
 
     tcx.sess.abort_if_errors();
 }
@@ -189,7 +191,7 @@ fn check_exhaustive(cx: &MatchCheckCtxt, sp: Span, pats: ~[@Pat]) {
                     let variants = ty::enum_variants(cx.tcx, id);
 
                     match variants.iter().find(|v| v.id == vid) {
-                        Some(v) => Some(cx.tcx.sess.str_of(v.name)),
+                        Some(v) => Some(token::get_ident(v.name).get().to_str()),
                         None => {
                             fail!("check_exhaustive: bad variant in ctor")
                         }
@@ -286,7 +288,7 @@ fn is_useful(cx: &MatchCheckCtxt, m: &matrix, v: &[@Pat]) -> useful {
                 let max_len = m.rev_iter().fold(0, |max_len, r| {
                   match r[0].node {
                     PatVec(ref before, _, ref after) => {
-                      num::max(before.len() + after.len(), max_len)
+                      cmp::max(before.len() + after.len(), max_len)
                     }
                     _ => max_len
                   }

@@ -17,20 +17,21 @@ use ast::Name;
 use std::cast;
 use std::cell::RefCell;
 use std::cmp::Equiv;
+use std::hash_old::Hash;
 use std::hashmap::HashMap;
 use std::rc::Rc;
 
 pub struct Interner<T> {
-    priv map: @RefCell<HashMap<T, Name>>,
-    priv vect: @RefCell<~[T]>,
+    priv map: RefCell<HashMap<T, Name>>,
+    priv vect: RefCell<~[T]>,
 }
 
 // when traits can extend traits, we should extend index<Name,T> to get []
 impl<T:Eq + IterBytes + Hash + Freeze + Clone + 'static> Interner<T> {
     pub fn new() -> Interner<T> {
         Interner {
-            map: @RefCell::new(HashMap::new()),
-            vect: @RefCell::new(~[]),
+            map: RefCell::new(HashMap::new()),
+            vect: RefCell::new(~[]),
         }
     }
 
@@ -123,18 +124,18 @@ impl RcStr {
 }
 
 // A StrInterner differs from Interner<String> in that it accepts
-// references rather than @ ones, resulting in less allocation.
+// &str rather than RcStr, resulting in less allocation.
 pub struct StrInterner {
-    priv map: @RefCell<HashMap<RcStr, Name>>,
-    priv vect: @RefCell<~[RcStr]>,
+    priv map: RefCell<HashMap<RcStr, Name>>,
+    priv vect: RefCell<~[RcStr]>,
 }
 
 // when traits can extend traits, we should extend index<Name,T> to get []
 impl StrInterner {
     pub fn new() -> StrInterner {
         StrInterner {
-            map: @RefCell::new(HashMap::new()),
-            vect: @RefCell::new(~[]),
+            map: RefCell::new(HashMap::new()),
+            vect: RefCell::new(~[]),
         }
     }
 

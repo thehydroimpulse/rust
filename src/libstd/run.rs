@@ -13,7 +13,7 @@
 #[allow(missing_doc)];
 #[deny(unused_must_use)];
 
-use comm::SharedChan;
+use comm::Chan;
 use io::Reader;
 use io::process::ProcessExit;
 use io::process;
@@ -88,6 +88,20 @@ pub struct ProcessOptions<'a> {
      * and Process.error() will fail.
      */
     err_fd: Option<c_int>,
+
+    /// The uid to assume for the child process. For more information, see the
+    /// documentation in `io::process::ProcessConfig` about this field.
+    uid: Option<uint>,
+
+    /// The gid to assume for the child process. For more information, see the
+    /// documentation in `io::process::ProcessConfig` about this field.
+    gid: Option<uint>,
+
+    /// Flag as to whether the child process will be the leader of a new process
+    /// group or not. This allows the parent process to exit while the child is
+    /// still running. For more information, see the documentation in
+    /// `io::process::ProcessConfig` about this field.
+    detach: bool,
 }
 
 impl <'a> ProcessOptions<'a> {
@@ -99,6 +113,9 @@ impl <'a> ProcessOptions<'a> {
             in_fd: None,
             out_fd: None,
             err_fd: None,
+            uid: None,
+            gid: None,
+            detach: false,
         }
     }
 }
@@ -128,7 +145,9 @@ impl Process {
      */
     pub fn new(prog: &str, args: &[~str],
                options: ProcessOptions) -> io::IoResult<Process> {
-        let ProcessOptions { env, dir, in_fd, out_fd, err_fd } = options;
+        let ProcessOptions {
+            env, dir, in_fd, out_fd, err_fd, uid, gid, detach
+        } = options;
         let env = env.as_ref().map(|a| a.as_slice());
         let cwd = dir.as_ref().map(|a| a.as_str().unwrap());
         fn rtify(fd: Option<c_int>, input: bool) -> process::StdioContainer {
@@ -145,6 +164,9 @@ impl Process {
             env: env,
             cwd: cwd,
             io: rtio,
+            uid: uid,
+            gid: gid,
+            detach: detach,
         };
         process::Process::new(rtconfig).map(|p| Process { inner: p })
     }
@@ -225,7 +247,7 @@ impl Process {
         // in parallel so we don't deadlock while blocking on one
         // or the other. FIXME (#2625): Surely there's a much more
         // clever way to do this.
-        let (p, ch) = SharedChan::new();
+        let (p, ch) = Chan::new();
         let ch_clone = ch.clone();
 
         spawn(proc() {
@@ -302,11 +324,10 @@ impl Process {
  */
 pub fn process_status(prog: &str, args: &[~str]) -> io::IoResult<ProcessExit> {
     Process::new(prog, args, ProcessOptions {
-        env: None,
-        dir: None,
         in_fd: Some(unsafe { libc::dup(libc::STDIN_FILENO) }),
         out_fd: Some(unsafe { libc::dup(libc::STDOUT_FILENO) }),
-        err_fd: Some(unsafe { libc::dup(libc::STDERR_FILENO) })
+        err_fd: Some(unsafe { libc::dup(libc::STDERR_FILENO) }),
+        .. ProcessOptions::new()
     }).map(|mut p| p.finish())
 }
 
@@ -396,11 +417,10 @@ mod tests {
         let pipe_err = os::pipe();
 
         let mut process = run::Process::new("cat", [], run::ProcessOptions {
-            dir: None,
-            env: None,
             in_fd: Some(pipe_in.input),
             out_fd: Some(pipe_out.out),
-            err_fd: Some(pipe_err.out)
+            err_fd: Some(pipe_err.out),
+            .. run::ProcessOptions::new()
         }).unwrap();
 
         os::close(pipe_in.input as int);

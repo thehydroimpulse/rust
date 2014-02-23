@@ -22,9 +22,7 @@
 #[allow(missing_doc)];
 #[feature(managed_boxes)];
 
-extern mod collections;
-
-#[cfg(test)] extern mod extra;
+extern crate collections;
 
 use collections::list::{List, Cons, Nil};
 use collections::list;
@@ -32,15 +30,14 @@ use collections::list;
 use std::cast::{transmute, transmute_mut, transmute_mut_region};
 use std::cast;
 use std::cell::{Cell, RefCell};
-use std::num;
-use std::ptr;
-use std::kinds::marker;
 use std::mem;
+use std::cmp;
+use std::num;
+use std::kinds::marker;
 use std::rc::Rc;
 use std::rt::global_heap;
 use std::unstable::intrinsics::{TyDesc, get_tydesc};
 use std::unstable::intrinsics;
-use std::util;
 use std::vec;
 
 // The way arena uses arrays is really deeply awful. The arrays are
@@ -145,7 +142,7 @@ unsafe fn destroy_chunk(chunk: &Chunk) {
     let fill = chunk.fill.get();
 
     while idx < fill {
-        let tydesc_data: *uint = transmute(ptr::offset(buf, idx as int));
+        let tydesc_data: *uint = transmute(buf.offset(idx as int));
         let (tydesc, is_done) = un_bitpack_tydesc_ptr(*tydesc_data);
         let (size, align) = ((*tydesc).size, (*tydesc).align);
 
@@ -156,7 +153,7 @@ unsafe fn destroy_chunk(chunk: &Chunk) {
         //debug!("freeing object: idx = {}, size = {}, align = {}, done = {}",
         //       start, size, align, is_done);
         if is_done {
-            ((*tydesc).drop_glue)(ptr::offset(buf, start as int) as *i8);
+            ((*tydesc).drop_glue)(buf.offset(start as int) as *i8);
         }
 
         // Find where the next tydesc lives
@@ -185,7 +182,7 @@ impl Arena {
     // Functions for the POD part of the arena
     fn alloc_pod_grow(&mut self, n_bytes: uint, align: uint) -> *u8 {
         // Allocate a new chunk.
-        let new_min_chunk_size = num::max(n_bytes, self.chunk_size());
+        let new_min_chunk_size = cmp::max(n_bytes, self.chunk_size());
         self.chunks.set(@Cons(self.pod_head.clone(), self.chunks.get()));
         self.pod_head =
             chunk(num::next_power_of_two(new_min_chunk_size + 1u), true);
@@ -216,7 +213,7 @@ impl Arena {
         unsafe {
             let ptr = self.alloc_pod_inner(mem::size_of::<T>(), mem::min_align_of::<T>());
             let ptr: *mut T = transmute(ptr);
-            intrinsics::move_val_init(&mut (*ptr), op());
+            mem::move_val_init(&mut (*ptr), op());
             return transmute(ptr);
         }
     }
@@ -225,7 +222,7 @@ impl Arena {
     fn alloc_nonpod_grow(&mut self, n_bytes: uint, align: uint)
                          -> (*u8, *u8) {
         // Allocate a new chunk.
-        let new_min_chunk_size = num::max(n_bytes, self.chunk_size());
+        let new_min_chunk_size = cmp::max(n_bytes, self.chunk_size());
         self.chunks.set(@Cons(self.head.clone(), self.chunks.get()));
         self.head =
             chunk(num::next_power_of_two(new_min_chunk_size + 1u), false);
@@ -262,7 +259,7 @@ impl Arena {
             //       start, n_bytes, align, head.fill);
 
             let buf = self.head.as_ptr();
-            return (ptr::offset(buf, tydesc_start as int), ptr::offset(buf, start as int));
+            return (buf.offset(tydesc_start as int), buf.offset(start as int));
         }
     }
 
@@ -278,7 +275,7 @@ impl Arena {
             // has *not* been initialized yet.
             *ty_ptr = transmute(tydesc);
             // Actually initialize it
-            intrinsics::move_val_init(&mut(*ptr), op());
+            mem::move_val_init(&mut(*ptr), op());
             // Now that we are done, update the tydesc to indicate that
             // the object is there.
             *ty_ptr = bitpack_tydesc_ptr(tydesc, true);
@@ -379,7 +376,7 @@ impl TypedArenaChunk {
         let mut chunk = unsafe {
             let chunk = global_heap::exchange_malloc(size);
             let mut chunk: ~TypedArenaChunk = cast::transmute(chunk);
-            intrinsics::move_val_init(&mut chunk.next, next);
+            mem::move_val_init(&mut chunk.next, next);
             chunk
         };
 
@@ -404,7 +401,7 @@ impl TypedArenaChunk {
         }
 
         // Destroy the next chunk.
-        let next_opt = util::replace(&mut self.next, None);
+        let next_opt = mem::replace(&mut self.next, None);
         match next_opt {
             None => {}
             Some(mut next) => {
@@ -466,7 +463,7 @@ impl<T> TypedArena<T> {
             }
 
             let ptr: &'a mut T = cast::transmute(this.ptr);
-            intrinsics::move_val_init(ptr, object);
+            mem::move_val_init(ptr, object);
             this.ptr = this.ptr.offset(1);
             let ptr: &'a T = ptr;
             ptr
@@ -506,9 +503,10 @@ impl<T> Drop for TypedArena<T> {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
+    extern crate test;
+    use self::test::BenchHarness;
     use super::{Arena, TypedArena};
-    use extra::test::BenchHarness;
 
     struct Point {
         x: int,

@@ -283,9 +283,10 @@ pub fn maybe_aborted<T>(result: T, mut p: Parser) -> T {
 
 #[cfg(test)]
 mod test {
+    extern crate extra;
+    use self::extra::json;
     use super::*;
     use serialize::Encodable;
-    use extra;
     use std::io;
     use std::io::MemWriter;
     use std::str;
@@ -300,9 +301,9 @@ mod test {
     use util::parser_testing::string_to_stmt;
 
     #[cfg(test)]
-    fn to_json_str<'a, E: Encodable<extra::json::Encoder<'a>>>(val: &E) -> ~str {
+    fn to_json_str<'a, E: Encodable<json::Encoder<'a>>>(val: &E) -> ~str {
         let mut writer = MemWriter::new();
-        let mut encoder = extra::json::Encoder::new(&mut writer as &mut io::Writer);
+        let mut encoder = json::Encoder::new(&mut writer as &mut io::Writer);
         val.encode(&mut encoder);
         str::from_utf8_owned(writer.unwrap()).unwrap()
     }
@@ -363,40 +364,48 @@ mod test {
     // check the token-tree-ization of macros
     #[test] fn string_to_tts_macro () {
         let tts = string_to_tts(~"macro_rules! zip (($a)=>($a))");
+        let tts: &[ast::TokenTree] = tts;
         match tts {
             [ast::TTTok(_,_),
              ast::TTTok(_,token::NOT),
              ast::TTTok(_,_),
-             ast::TTDelim(delim_elts)] =>
-                match *delim_elts {
-                [ast::TTTok(_,token::LPAREN),
-                 ast::TTDelim(first_set),
-                 ast::TTTok(_,token::FAT_ARROW),
-                 ast::TTDelim(second_set),
-                 ast::TTTok(_,token::RPAREN)] =>
-                    match *first_set {
+             ast::TTDelim(delim_elts)] => {
+                let delim_elts: &[ast::TokenTree] = *delim_elts;
+                match delim_elts {
                     [ast::TTTok(_,token::LPAREN),
-                     ast::TTTok(_,token::DOLLAR),
-                     ast::TTTok(_,_),
-                     ast::TTTok(_,token::RPAREN)] =>
-                        match *second_set {
-                        [ast::TTTok(_,token::LPAREN),
-                         ast::TTTok(_,token::DOLLAR),
-                         ast::TTTok(_,_),
-                         ast::TTTok(_,token::RPAREN)] =>
-                            assert_eq!("correct","correct"),
-                        _ => assert_eq!("wrong 4","correct")
+                     ast::TTDelim(first_set),
+                     ast::TTTok(_,token::FAT_ARROW),
+                     ast::TTDelim(second_set),
+                     ast::TTTok(_,token::RPAREN)] => {
+                        let first_set: &[ast::TokenTree] = *first_set;
+                        match first_set {
+                            [ast::TTTok(_,token::LPAREN),
+                             ast::TTTok(_,token::DOLLAR),
+                             ast::TTTok(_,_),
+                             ast::TTTok(_,token::RPAREN)] => {
+                                let second_set: &[ast::TokenTree] =
+                                    *second_set;
+                                match second_set {
+                                    [ast::TTTok(_,token::LPAREN),
+                                     ast::TTTok(_,token::DOLLAR),
+                                     ast::TTTok(_,_),
+                                     ast::TTTok(_,token::RPAREN)] => {
+                                        assert_eq!("correct","correct")
+                                    }
+                                    _ => assert_eq!("wrong 4","correct")
+                                }
+                            },
+                            _ => {
+                                error!("failing value 3: {:?}",first_set);
+                                assert_eq!("wrong 3","correct")
+                            }
+                        }
                     },
                     _ => {
-                        error!("failing value 3: {:?}",first_set);
-                        assert_eq!("wrong 3","correct")
+                        error!("failing value 2: {:?}",delim_elts);
+                        assert_eq!("wrong","correct");
                     }
-                },
-                _ => {
-                    error!("failing value 2: {:?}",delim_elts);
-                    assert_eq!("wrong","correct");
                 }
-
             },
             _ => {
                 error!("failing value: {:?}",tts);

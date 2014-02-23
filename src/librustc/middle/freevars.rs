@@ -1,4 +1,4 @@
-// Copyright 2012 The Rust Project Developers. See the COPYRIGHT
+// Copyright 2012-2014 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.
 //
@@ -11,6 +11,7 @@
 // A pass that annotates for each loops and functions with the free
 // variables that they contain.
 
+#[allow(non_camel_case_types)];
 
 use middle::resolve;
 use middle::ty;
@@ -124,13 +125,13 @@ impl Visitor<()> for AnnotateFreevarsVisitor {
 // efficient as it fully recomputes the free variables at every
 // node of interest rather than building up the free variables in
 // one pass. This could be improved upon if it turns out to matter.
-pub fn annotate_freevars(def_map: resolve::DefMap, crate: &ast::Crate) ->
+pub fn annotate_freevars(def_map: resolve::DefMap, krate: &ast::Crate) ->
    freevar_map {
     let mut visitor = AnnotateFreevarsVisitor {
         def_map: def_map,
         freevars: HashMap::new(),
     };
-    visit::walk_crate(&mut visitor, crate, ());
+    visit::walk_crate(&mut visitor, krate, ());
 
     let AnnotateFreevarsVisitor {
         freevars,

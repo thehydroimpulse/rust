@@ -59,19 +59,19 @@ This `for` loop syntax can be applied to any iterator over any type.
 ## Iteration protocol and more
 
 More detailed information about iterators can be found in the [container
-tutorial](http://static.rust-lang.org/doc/master/tutorial-container.html) with
+guide](http://static.rust-lang.org/doc/master/guide-container.html) with
 the rest of the rust manuals.
 
 */
 
 use cmp;
-use num::{Zero, One, Integer, CheckedAdd, CheckedSub, Saturating, ToPrimitive};
+use num::{Zero, One, CheckedAdd, CheckedSub, Saturating, ToPrimitive, Int};
 use option::{Option, Some, None};
 use ops::{Add, Mul, Sub};
 use cmp::{Eq, Ord};
 use clone::Clone;
 use uint;
-use util;
+use mem;
 
 /// Conversion from an `Iterator`
 pub trait FromIterator<A> {
@@ -701,7 +701,7 @@ impl<'a, A, T: DoubleEndedIterator<&'a mut A>> MutableDoubleEndedIterator for T 
     fn reverse_(&mut self) {
         loop {
             match (self.next(), self.next_back()) {
-                (Some(x), Some(y)) => util::swap(x, y),
+                (Some(x), Some(y)) => mem::swap(x, y),
                 _ => break
             }
         }
@@ -883,7 +883,7 @@ pub trait OrdIterator<A> {
     /// ```
     fn min(&mut self) -> Option<A>;
 
-    /// `min_max` finds the mininum and maximum elements in the iterator.
+    /// `min_max` finds the minimum and maximum elements in the iterator.
     ///
     /// The return type `MinMaxResult` is an enum of three variants:
     /// - `NoElements` if the iterator is empty.
@@ -2005,9 +2005,9 @@ impl<A: Add<A, A> + Ord + Clone + ToPrimitive> Iterator<A> for Range<A> {
     }
 }
 
-/// `Integer` is required to ensure the range will be the same regardless of
+/// `Int` is required to ensure the range will be the same regardless of
 /// the direction it is consumed.
-impl<A: Integer + Ord + Clone + ToPrimitive> DoubleEndedIterator<A> for Range<A> {
+impl<A: Int + Ord + Clone + ToPrimitive> DoubleEndedIterator<A> for Range<A> {
     #[inline]
     fn next_back(&mut self) -> Option<A> {
         if self.stop > self.state {
@@ -2065,7 +2065,7 @@ impl<A: Add<A, A> + Eq + Ord + Clone + ToPrimitive> Iterator<A> for RangeInclusi
     }
 }
 
-impl<A: Sub<A, A> + Integer + Ord + Clone + ToPrimitive> DoubleEndedIterator<A>
+impl<A: Sub<A, A> + Int + Ord + Clone + ToPrimitive> DoubleEndedIterator<A>
     for RangeInclusive<A> {
     #[inline]
     fn next_back(&mut self) -> Option<A> {
@@ -2381,7 +2381,7 @@ mod tests {
     #[test]
     fn test_filter_map() {
         let mut it = count(0u, 1u).take(10)
-            .filter_map(|x| if x.is_even() { Some(x*x) } else { None });
+            .filter_map(|x| if x % 2 == 0 { Some(x*x) } else { None });
         assert_eq!(it.collect::<~[uint]>(), ~[0*0, 2*2, 4*4, 6*6, 8*8]);
     }
 
@@ -2611,7 +2611,7 @@ mod tests {
         assert_eq!(vi.size_hint(), (10, Some(10)));
 
         assert_eq!(c.take(5).size_hint(), (5, Some(5)));
-        assert_eq!(c.skip(5).size_hint().second(), None);
+        assert_eq!(c.skip(5).size_hint().val1(), None);
         assert_eq!(c.take_while(|_| false).size_hint(), (0, None));
         assert_eq!(c.skip_while(|_| false).size_hint(), (0, None));
         assert_eq!(c.enumerate().size_hint(), (uint::MAX, None));
@@ -2648,7 +2648,7 @@ mod tests {
     fn test_all() {
         let v: ~&[int] = ~&[1, 2, 3, 4, 5];
         assert!(v.iter().all(|&x| x < 10));
-        assert!(!v.iter().all(|&x| x.is_even()));
+        assert!(!v.iter().all(|&x| x % 2 == 0));
         assert!(!v.iter().all(|&x| x > 100));
         assert!(v.slice(0, 0).iter().all(|_| fail!()));
     }
@@ -2657,7 +2657,7 @@ mod tests {
     fn test_any() {
         let v: ~&[int] = ~&[1, 2, 3, 4, 5];
         assert!(v.iter().any(|&x| x < 10));
-        assert!(v.iter().any(|&x| x.is_even()));
+        assert!(v.iter().any(|&x| x % 2 == 0));
         assert!(!v.iter().any(|&x| x > 100));
         assert!(!v.slice(0, 0).iter().any(|_| fail!()));
     }

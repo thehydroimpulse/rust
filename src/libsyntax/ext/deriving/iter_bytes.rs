@@ -18,10 +18,11 @@ use ext::deriving::generic::*;
 pub fn expand_deriving_iter_bytes(cx: &mut ExtCtxt,
                                   span: Span,
                                   mitem: @MetaItem,
-                                  in_items: ~[@Item]) -> ~[@Item] {
+                                  item: @Item,
+                                  push: |@Item|) {
     let trait_def = TraitDef {
-        cx: cx, span: span,
-
+        span: span,
+        attributes: ~[],
         path: Path::new(~["std", "to_bytes", "IterBytes"]),
         additional_bounds: ~[],
         generics: LifetimeBounds::empty(),
@@ -42,7 +43,7 @@ pub fn expand_deriving_iter_bytes(cx: &mut ExtCtxt,
         ]
     };
 
-    trait_def.expand(mitem, in_items)
+    trait_def.expand(cx, mitem, item, push)
 }
 
 fn iter_bytes_substructure(cx: &mut ExtCtxt, trait_span: Span, substr: &Substructure) -> @Expr {

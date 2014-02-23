@@ -112,7 +112,7 @@ fn parse_args(ecx: &mut ExtCtxt, sp: Span,
                     return (extra, None);
                 }
             };
-            let interned_name = token::get_ident(ident.name);
+            let interned_name = token::get_ident(ident);
             let name = interned_name.get();
             p.expect(&token::EQ);
             let e = p.parse_expr();
@@ -367,157 +367,167 @@ impl<'a> Context<'a> {
         return ~[unnamed, allow_dead_code];
     }
 
-    /// Translate a `parse::Piece` to a static `rt::Piece`
-    fn trans_piece(&mut self, piece: &parse::Piece) -> @ast::Expr {
-        let sp = self.fmtsp;
-        let parsepath = |s: &str| {
-            ~[self.ecx.ident_of("std"), self.ecx.ident_of("fmt"),
-              self.ecx.ident_of("parse"), self.ecx.ident_of(s)]
-        };
-        let rtpath = |s: &str| {
-            ~[self.ecx.ident_of("std"), self.ecx.ident_of("fmt"),
-              self.ecx.ident_of("rt"), self.ecx.ident_of(s)]
-        };
-        let ctpath = |s: &str| {
-            ~[self.ecx.ident_of("std"), self.ecx.ident_of("fmt"),
-              self.ecx.ident_of("parse"), self.ecx.ident_of(s)]
-        };
-        let none = self.ecx.path_global(sp, ~[
+    fn parsepath(&self, s: &str) -> ~[ast::Ident] {
+        ~[self.ecx.ident_of("std"), self.ecx.ident_of("fmt"),
+          self.ecx.ident_of("parse"), self.ecx.ident_of(s)]
+    }
+
+    fn rtpath(&self, s: &str) -> ~[ast::Ident] {
+        ~[self.ecx.ident_of("std"), self.ecx.ident_of("fmt"),
+          self.ecx.ident_of("rt"), self.ecx.ident_of(s)]
+    }
+
+    fn ctpath(&self, s: &str) -> ~[ast::Ident] {
+        ~[self.ecx.ident_of("std"), self.ecx.ident_of("fmt"),
+          self.ecx.ident_of("parse"), self.ecx.ident_of(s)]
+    }
+
+    fn none(&self) -> @ast::Expr {
+        let none = self.ecx.path_global(self.fmtsp, ~[
                 self.ecx.ident_of("std"),
                 self.ecx.ident_of("option"),
                 self.ecx.ident_of("None")]);
-        let none = self.ecx.expr_path(none);
-        let some = |e: @ast::Expr| {
-            let p = self.ecx.path_global(sp, ~[
+        self.ecx.expr_path(none)
+    }
+
+    fn some(&self, e: @ast::Expr) -> @ast::Expr {
+        let p = self.ecx.path_global(self.fmtsp, ~[
                 self.ecx.ident_of("std"),
                 self.ecx.ident_of("option"),
                 self.ecx.ident_of("Some")]);
-            let p = self.ecx.expr_path(p);
-            self.ecx.expr_call(sp, p, ~[e])
-        };
-        let trans_count = |c: parse::Count| {
-            match c {
-                parse::CountIs(i) => {
-                    self.ecx.expr_call_global(sp, rtpath("CountIs"),
-                                              ~[self.ecx.expr_uint(sp, i)])
-                }
-                parse::CountIsParam(i) => {
-                    self.ecx.expr_call_global(sp, rtpath("CountIsParam"),
-                                              ~[self.ecx.expr_uint(sp, i)])
-                }
-                parse::CountImplied => {
-                    let path = self.ecx.path_global(sp, rtpath("CountImplied"));
-                    self.ecx.expr_path(path)
-                }
-                parse::CountIsNextParam => {
-                    let path = self.ecx.path_global(sp, rtpath("CountIsNextParam"));
-                    self.ecx.expr_path(path)
-                }
-                parse::CountIsName(n) => {
-                    let i = match self.name_positions.find_equiv(&n) {
-                        Some(&i) => i,
-                        None => 0, // error already emitted elsewhere
-                    };
-                    let i = i + self.args.len();
-                    self.ecx.expr_call_global(sp, rtpath("CountIsParam"),
-                                              ~[self.ecx.expr_uint(sp, i)])
-                }
+        let p = self.ecx.expr_path(p);
+        self.ecx.expr_call(self.fmtsp, p, ~[e])
+    }
+
+    fn trans_count(&self, c: parse::Count) -> @ast::Expr {
+        let sp = self.fmtsp;
+        match c {
+            parse::CountIs(i) => {
+                self.ecx.expr_call_global(sp, self.rtpath("CountIs"),
+                                          ~[self.ecx.expr_uint(sp, i)])
             }
-        };
-        let trans_method = |method: &parse::Method| {
-            let method = match *method {
-                parse::Select(ref arms, ref default) => {
-                    let arms = arms.iter().map(|arm| {
-                        let p = self.ecx.path_global(sp, rtpath("SelectArm"));
+            parse::CountIsParam(i) => {
+                self.ecx.expr_call_global(sp, self.rtpath("CountIsParam"),
+                                          ~[self.ecx.expr_uint(sp, i)])
+            }
+            parse::CountImplied => {
+                let path = self.ecx.path_global(sp, self.rtpath("CountImplied"));
+                self.ecx.expr_path(path)
+            }
+            parse::CountIsNextParam => {
+                let path = self.ecx.path_global(sp, self.rtpath("CountIsNextParam"));
+                self.ecx.expr_path(path)
+            }
+            parse::CountIsName(n) => {
+                let i = match self.name_positions.find_equiv(&n) {
+                    Some(&i) => i,
+                    None => 0, // error already emitted elsewhere
+                };
+                let i = i + self.args.len();
+                self.ecx.expr_call_global(sp, self.rtpath("CountIsParam"),
+                                          ~[self.ecx.expr_uint(sp, i)])
+            }
+        }
+    }
+
+    fn trans_method(&mut self, method: &parse::Method) -> @ast::Expr {
+        let sp = self.fmtsp;
+        let method = match *method {
+            parse::Select(ref arms, ref default) => {
+                let arms = arms.iter().map(|arm| {
+                        let p = self.ecx.path_global(sp, self.rtpath("SelectArm"));
                         let result = arm.result.iter().map(|p| {
                             self.trans_piece(p)
                         }).collect();
                         let s = token::intern_and_get_ident(arm.selector);
                         let selector = self.ecx.expr_str(sp, s);
                         self.ecx.expr_struct(sp, p, ~[
-                            self.ecx.field_imm(sp,
-                                               self.ecx.ident_of("selector"),
-                                               selector),
-                            self.ecx.field_imm(sp, self.ecx.ident_of("result"),
-                                               self.ecx.expr_vec_slice(sp, result)),
-                        ])
+                                self.ecx.field_imm(sp,
+                                                   self.ecx.ident_of("selector"),
+                                                   selector),
+                                self.ecx.field_imm(sp, self.ecx.ident_of("result"),
+                                                   self.ecx.expr_vec_slice(sp, result)),
+                                ])
                     }).collect();
-                    let default = default.iter().map(|p| {
+                let default = default.iter().map(|p| {
                         self.trans_piece(p)
                     }).collect();
-                    self.ecx.expr_call_global(sp, rtpath("Select"), ~[
+                self.ecx.expr_call_global(sp, self.rtpath("Select"), ~[
                         self.ecx.expr_vec_slice(sp, arms),
                         self.ecx.expr_vec_slice(sp, default),
-                    ])
-                }
-                parse::Plural(offset, ref arms, ref default) => {
-                    let offset = match offset {
-                        Some(i) => { some(self.ecx.expr_uint(sp, i)) }
-                        None => { none.clone() }
-                    };
-                    let arms = arms.iter().map(|arm| {
-                        let p = self.ecx.path_global(sp, rtpath("PluralArm"));
+                        ])
+            }
+            parse::Plural(offset, ref arms, ref default) => {
+                let offset = match offset {
+                    Some(i) => { self.some(self.ecx.expr_uint(sp, i)) }
+                    None => { self.none() }
+                };
+                let arms = arms.iter().map(|arm| {
+                        let p = self.ecx.path_global(sp, self.rtpath("PluralArm"));
                         let result = arm.result.iter().map(|p| {
-                            self.trans_piece(p)
-                        }).collect();
+                                self.trans_piece(p)
+                            }).collect();
                         let (lr, selarg) = match arm.selector {
                             parse::Keyword(t) => {
-                                let p = ctpath(format!("{:?}", t));
+                                let p = self.ctpath(format!("{:?}", t));
                                 let p = self.ecx.path_global(sp, p);
-                                (rtpath("Keyword"), self.ecx.expr_path(p))
+                                (self.rtpath("Keyword"), self.ecx.expr_path(p))
                             }
                             parse::Literal(i) => {
-                                (rtpath("Literal"), self.ecx.expr_uint(sp, i))
+                                (self.rtpath("Literal"), self.ecx.expr_uint(sp, i))
                             }
                         };
                         let selector = self.ecx.expr_call_global(sp,
-                                lr, ~[selarg]);
+                                                                 lr, ~[selarg]);
                         self.ecx.expr_struct(sp, p, ~[
-                            self.ecx.field_imm(sp,
-                                               self.ecx.ident_of("selector"),
-                                               selector),
-                            self.ecx.field_imm(sp, self.ecx.ident_of("result"),
-                                               self.ecx.expr_vec_slice(sp, result)),
-                        ])
+                                self.ecx.field_imm(sp,
+                                                   self.ecx.ident_of("selector"),
+                                                   selector),
+                                self.ecx.field_imm(sp, self.ecx.ident_of("result"),
+                                                   self.ecx.expr_vec_slice(sp, result)),
+                                ])
                     }).collect();
-                    let default = default.iter().map(|p| {
+                let default = default.iter().map(|p| {
                         self.trans_piece(p)
                     }).collect();
-                    self.ecx.expr_call_global(sp, rtpath("Plural"), ~[
+                self.ecx.expr_call_global(sp, self.rtpath("Plural"), ~[
                         offset,
                         self.ecx.expr_vec_slice(sp, arms),
                         self.ecx.expr_vec_slice(sp, default),
-                    ])
-                }
-            };
-            let life = self.ecx.lifetime(sp, self.ecx.ident_of("static"));
-            let ty = self.ecx.ty_path(self.ecx.path_all(
+                        ])
+            }
+        };
+        let life = self.ecx.lifetime(sp, self.ecx.ident_of("static"));
+        let ty = self.ecx.ty_path(self.ecx.path_all(
                 sp,
                 true,
-                rtpath("Method"),
+                self.rtpath("Method"),
                 opt_vec::with(life),
                 ~[]
-            ), None);
-            let st = ast::ItemStatic(ty, ast::MutImmutable, method);
-            let static_name = self.ecx.ident_of(format!("__STATIC_METHOD_{}",
-                                                     self.method_statics.len()));
-            let item = self.ecx.item(sp, static_name, self.static_attrs(), st);
-            self.method_statics.push(item);
-            self.ecx.expr_ident(sp, static_name)
-        };
+                    ), None);
+        let st = ast::ItemStatic(ty, ast::MutImmutable, method);
+        let static_name = self.ecx.ident_of(format!("__STATIC_METHOD_{}",
+                                                    self.method_statics.len()));
+        let item = self.ecx.item(sp, static_name, self.static_attrs(), st);
+        self.method_statics.push(item);
+        self.ecx.expr_ident(sp, static_name)
+    }
 
+    /// Translate a `parse::Piece` to a static `rt::Piece`
+    fn trans_piece(&mut self, piece: &parse::Piece) -> @ast::Expr {
+        let sp = self.fmtsp;
         match *piece {
             parse::String(s) => {
                 let s = token::intern_and_get_ident(s);
                 self.ecx.expr_call_global(sp,
-                                          rtpath("String"),
+                                          self.rtpath("String"),
                                           ~[
                     self.ecx.expr_str(sp, s)
                 ])
             }
             parse::CurrentArgument => {
                 let nil = self.ecx.expr_lit(sp, ast::LitNil);
-                self.ecx.expr_call_global(sp, rtpath("CurrentArgument"), ~[nil])
+                self.ecx.expr_call_global(sp, self.rtpath("CurrentArgument"), ~[nil])
             }
             parse::Argument(ref arg) => {
                 // Translate the position
@@ -525,11 +535,11 @@ impl<'a> Context<'a> {
                     // These two have a direct mapping
                     parse::ArgumentNext => {
                         let path = self.ecx.path_global(sp,
-                                                        rtpath("ArgumentNext"));
+                                                        self.rtpath("ArgumentNext"));
                         self.ecx.expr_path(path)
                     }
                     parse::ArgumentIs(i) => {
-                        self.ecx.expr_call_global(sp, rtpath("ArgumentIs"),
+                        self.ecx.expr_call_global(sp, self.rtpath("ArgumentIs"),
                                                   ~[self.ecx.expr_uint(sp, i)])
                     }
                     // Named arguments are converted to positional arguments at
@@ -540,7 +550,7 @@ impl<'a> Context<'a> {
                             None => 0, // error already emitted elsewhere
                         };
                         let i = i + self.args.len();
-                        self.ecx.expr_call_global(sp, rtpath("ArgumentIs"),
+                        self.ecx.expr_call_global(sp, self.rtpath("ArgumentIs"),
                                                   ~[self.ecx.expr_uint(sp, i)])
                     }
                 };
@@ -550,20 +560,20 @@ impl<'a> Context<'a> {
                 let fill = self.ecx.expr_lit(sp, ast::LitChar(fill as u32));
                 let align = match arg.format.align {
                     parse::AlignLeft => {
-                        self.ecx.path_global(sp, parsepath("AlignLeft"))
+                        self.ecx.path_global(sp, self.parsepath("AlignLeft"))
                     }
                     parse::AlignRight => {
-                        self.ecx.path_global(sp, parsepath("AlignRight"))
+                        self.ecx.path_global(sp, self.parsepath("AlignRight"))
                     }
                     parse::AlignUnknown => {
-                        self.ecx.path_global(sp, parsepath("AlignUnknown"))
+                        self.ecx.path_global(sp, self.parsepath("AlignUnknown"))
                     }
                 };
                 let align = self.ecx.expr_path(align);
                 let flags = self.ecx.expr_uint(sp, arg.format.flags);
-                let prec = trans_count(arg.format.precision);
-                let width = trans_count(arg.format.width);
-                let path = self.ecx.path_global(sp, rtpath("FormatSpec"));
+                let prec = self.trans_count(arg.format.precision);
+                let width = self.trans_count(arg.format.width);
+                let path = self.ecx.path_global(sp, self.rtpath("FormatSpec"));
                 let fmt = self.ecx.expr_struct(sp, path, ~[
                     self.ecx.field_imm(sp, self.ecx.ident_of("fill"), fill),
                     self.ecx.field_imm(sp, self.ecx.ident_of("align"), align),
@@ -574,19 +584,19 @@ impl<'a> Context<'a> {
 
                 // Translate the method (if any)
                 let method = match arg.method {
-                    None => { none.clone() }
+                    None => { self.none() }
                     Some(ref m) => {
-                        let m = trans_method(*m);
-                        some(self.ecx.expr_addr_of(sp, m))
+                        let m = self.trans_method(*m);
+                        self.some(self.ecx.expr_addr_of(sp, m))
                     }
                 };
-                let path = self.ecx.path_global(sp, rtpath("Argument"));
+                let path = self.ecx.path_global(sp, self.rtpath("Argument"));
                 let s = self.ecx.expr_struct(sp, path, ~[
                     self.ecx.field_imm(sp, self.ecx.ident_of("position"), pos),
                     self.ecx.field_imm(sp, self.ecx.ident_of("format"), fmt),
                     self.ecx.field_imm(sp, self.ecx.ident_of("method"), method),
                 ]);
-                self.ecx.expr_call_global(sp, rtpath("Argument"), ~[s])
+                self.ecx.expr_call_global(sp, self.rtpath("Argument"), ~[s])
             }
         }
     }
@@ -597,6 +607,8 @@ impl<'a> Context<'a> {
         let mut lets = ~[];
         let mut locals = ~[];
         let mut names = vec::from_fn(self.name_positions.len(), |_| None);
+        let mut pats = ~[];
+        let mut heads = ~[];
 
         // First, declare all of our methods that are statics
         for &method in self.method_statics.iter() {
@@ -643,8 +655,8 @@ impl<'a> Context<'a> {
             if self.arg_types[i].is_none() { continue } // error already generated
 
             let name = self.ecx.ident_of(format!("__arg{}", i));
-            let e = self.ecx.expr_addr_of(e.span, e);
-            lets.push(self.ecx.stmt_let(e.span, false, name, e));
+            pats.push(self.ecx.pat_ident(e.span, name));
+            heads.push(self.ecx.expr_addr_of(e.span, e));
             locals.push(self.format_arg(e.span, Exact(i),
                                         self.ecx.expr_ident(e.span, name)));
         }
@@ -654,8 +666,8 @@ impl<'a> Context<'a> {
             }
 
             let lname = self.ecx.ident_of(format!("__arg{}", *name));
-            let e = self.ecx.expr_addr_of(e.span, e);
-            lets.push(self.ecx.stmt_let(e.span, false, lname, e));
+            pats.push(self.ecx.pat_ident(e.span, lname));
+            heads.push(self.ecx.expr_addr_of(e.span, e));
             names[*self.name_positions.get(name)] =
                 Some(self.format_arg(e.span,
                                      Named((*name).clone()),
@@ -696,8 +708,40 @@ impl<'a> Context<'a> {
         let res = self.ecx.expr_ident(self.fmtsp, resname);
         let result = self.ecx.expr_call(extra.span, extra, ~[
                             self.ecx.expr_addr_of(extra.span, res)]);
-        self.ecx.expr_block(self.ecx.block(self.fmtsp, lets,
-                                           Some(result)))
+        let body = self.ecx.expr_block(self.ecx.block(self.fmtsp, lets,
+                                                      Some(result)));
+
+        // Constructs an AST equivalent to:
+        //
+        //      match (&arg0, &arg1) {
+        //          (tmp0, tmp1) => body
+        //      }
+        //
+        // It was:
+        //
+        //      let tmp0 = &arg0;
+        //      let tmp1 = &arg1;
+        //      body
+        //
+        // Because of #11585 the new temporary lifetime rule, the enclosing
+        // statements for these temporaries become the let's themselves.
+        // If one or more of them are RefCell's, RefCell borrow() will also
+        // end there; they don't last long enough for body to use them. The
+        // match expression solves the scope problem.
+        //
+        // Note, it may also very well be transformed to:
+        //
+        //      match arg0 {
+        //          ref tmp0 => {
+        //              match arg1 => {
+        //                  ref tmp1 => body } } }
+        //
+        // But the nested match expression is proved to perform not as well
+        // as series of let's; the first approach does.
+        let pat = self.ecx.pat(self.fmtsp, ast::PatTup(pats));
+        let arm = self.ecx.arm(self.fmtsp, ~[pat], body);
+        let head = self.ecx.expr(self.fmtsp, ast::ExprTup(heads));
+        self.ecx.expr_match(self.fmtsp, head, ~[arm])
     }
 
     fn format_arg(&self, sp: Span, argno: Position, arg: @ast::Expr)
@@ -801,7 +845,7 @@ pub fn expand_preparsed_format_args(ecx: &mut ExtCtxt, sp: Span,
                                 expr,
                                 "format argument must be a string literal.") {
         Some((fmt, _)) => fmt,
-        None => return efmt
+        None => return MacResult::raw_dummy_expr(sp)
     };
 
     let mut parser = parse::Parser::new(fmt.get());
@@ -819,7 +863,7 @@ pub fn expand_preparsed_format_args(ecx: &mut ExtCtxt, sp: Span,
     match parser.errors.shift() {
         Some(error) => {
             cx.ecx.span_err(efmt.span, "invalid format string: " + error);
-            return efmt;
+            return MacResult::raw_dummy_expr(sp);
         }
         None => {}
     }

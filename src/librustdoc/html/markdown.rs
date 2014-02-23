@@ -24,10 +24,13 @@
 //! // ... something using html
 //! ```
 
+#[allow(non_camel_case_types)];
+
 use std::cast;
 use std::fmt;
 use std::io;
 use std::libc;
+use std::mem;
 use std::str;
 use std::unstable::intrinsics;
 use std::vec;
@@ -144,7 +147,7 @@ pub fn render(w: &mut io::Writer, s: &str) -> fmt::Result {
             flags: 0,
             link_attributes: None,
         };
-        let mut callbacks: sd_callbacks = intrinsics::init();
+        let mut callbacks: sd_callbacks = mem::init();
 
         sdhtml_renderer(&callbacks, &options, 0);
         let opaque = my_opaque {
@@ -171,21 +174,23 @@ pub fn render(w: &mut io::Writer, s: &str) -> fmt::Result {
 pub fn find_testable_code(doc: &str, tests: &mut ::test::Collector) {
     extern fn block(_ob: *buf, text: *buf, lang: *buf, opaque: *libc::c_void) {
         unsafe {
-            if text.is_null() || lang.is_null() { return }
-            let (test, shouldfail, ignore) =
+            if text.is_null() { return }
+            let (shouldfail, ignore) = if lang.is_null() {
+                (false, false)
+            } else {
                 vec::raw::buf_as_slice((*lang).data,
                                        (*lang).size as uint, |lang| {
                     let s = str::from_utf8(lang).unwrap();
-                    (s.contains("rust"), s.contains("should_fail"),
-                     s.contains("ignore"))
-                });
-            if !test { return }
+                    (s.contains("should_fail"), s.contains("ignore"))
+                })
+            };
+            if ignore { return }
             vec::raw::buf_as_slice((*text).data, (*text).size as uint, |text| {
                 let tests: &mut ::test::Collector = intrinsics::transmute(opaque);
                 let text = str::from_utf8(text).unwrap();
                 let mut lines = text.lines().map(|l| stripped_filtered_line(l).unwrap_or(l));
                 let text = lines.to_owned_vec().connect("\n");
-                tests.add_test(text, ignore, shouldfail);
+                tests.add_test(text, shouldfail);
             })
         }
     }
@@ -197,7 +202,7 @@ pub fn find_testable_code(doc: &str, tests: &mut ::test::Collector) {
                          MKDEXT_STRIKETHROUGH;
         let callbacks = sd_callbacks {
             blockcode: block,
-            other: intrinsics::init()
+            other: mem::init()
         };
 
         let tests = tests as *mut ::test::Collector as *libc::c_void;

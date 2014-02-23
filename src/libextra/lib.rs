@@ -34,49 +34,21 @@ Rust extras are part of the standard Rust distribution.
 #[deny(non_camel_case_types)];
 #[deny(missing_doc)];
 
-extern mod sync;
-#[cfg(not(stage0))]
-extern mod serialize;
-
-extern mod collections;
-
-#[cfg(stage0)]
-pub mod serialize {
-    #[allow(missing_doc)];
-    // Temp re-export until after a snapshot
-    extern mod serialize = "serialize";
-    pub use self::serialize::{Encoder, Decoder, Encodable, Decodable,
-                                   EncoderHelpers, DecoderHelpers};
-}
+extern crate sync;
+extern crate serialize;
+extern crate collections;
+extern crate time;
 
 // Utility modules
-
 pub mod c_vec;
-
-// And ... other stuff
-
 pub mod url;
 pub mod json;
 pub mod tempfile;
-pub mod time;
-pub mod base64;
 pub mod workcache;
-pub mod enum_set;
-#[path="num/bigint.rs"]
-pub mod bigint;
-#[path="num/rational.rs"]
-pub mod rational;
-#[path="num/complex.rs"]
-pub mod complex;
 pub mod stats;
-pub mod hex;
 
 #[cfg(unicode)]
 mod unicode;
-
-// Compiler support modules
-
-pub mod test;
 
 // A curious inner-module that's not exported that contains the binding
 // 'extra' so that macro-expanded references to extra::serialize and such
@@ -84,5 +56,5 @@ pub mod test;
 #[doc(hidden)]
 pub mod extra {
     pub use serialize;
-    pub use test;
 }
+

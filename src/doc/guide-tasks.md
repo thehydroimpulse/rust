@@ -226,13 +226,12 @@ spawn(proc() {
 });
 ~~~
 
-Instead we can use a `SharedChan`, a type that allows a single
-`Chan` to be shared by multiple senders.
+Instead we can clone the `chan`, which allows for multiple senders.
 
 ~~~
 # use std::task::spawn;
 
-let (port, chan) = SharedChan::new();
+let (port, chan) = Chan::new();
 
 for init_val in range(0u, 3) {
     // Create a new channel handle to distribute to the child task
@@ -246,16 +245,13 @@ let result = port.recv() + port.recv() + port.recv();
 # fn some_expensive_computation(_i: uint) -> int { 42 }
 ~~~
 
-Here we transfer ownership of the channel into a new `SharedChan` value.  Like
-`Chan`, `SharedChan` is a non-copyable, owned type (sometimes also referred to
-as an *affine* or *linear* type). Unlike with `Chan`, though, the programmer
-may duplicate a `SharedChan`, with the `clone()` method.  A cloned
-`SharedChan` produces a new handle to the same channel, allowing multiple
-tasks to send data to a single port.  Between `spawn`, `Chan` and
-`SharedChan`, we have enough tools to implement many useful concurrency
-patterns.
+Cloning a `Chan` produces a new handle to the same channel, allowing multiple
+tasks to send data to a single port. It also upgrades the channel internally in
+order to allow this functionality, which means that channels that are not
+cloned can avoid the overhead required to handle multiple senders. But this
+fact has no bearing on the channel's usage: the upgrade is transparent.
 
-Note that the above `SharedChan` example is somewhat contrived since
+Note that the above cloning example is somewhat contrived since
 you could also simply use three `Chan` pairs, but it serves to
 illustrate the point. For reference, written with multiple streams, it
 might look like the example below.
@@ -285,7 +281,7 @@ later.
 The basic example below illustrates this.
 
 ~~~
-# extern mod sync;
+# extern crate sync;
 
 # fn main() {
 # fn make_a_sandwich() {};
@@ -310,7 +306,7 @@ Here is another example showing how futures allow you to background computations
 be distributed on the available cores.
 
 ~~~
-# extern mod sync;
+# extern crate sync;
 # use std::vec;
 fn partial_sum(start: uint) -> f64 {
     let mut local_sum = 0f64;
@@ -346,7 +342,7 @@ Here is a small example showing how to use Arcs. We wish to run concurrently sev
 a single large vector of floats. Each task needs the full vector to perform its duty.
 
 ~~~
-# extern mod sync;
+# extern crate sync;
 # use std::vec;
 # use std::rand;
 use sync::Arc;
@@ -379,7 +375,7 @@ at the power given as argument and takes the inverse power of this value). The A
 created by the line
 
 ~~~
-# extern mod sync;
+# extern crate sync;
 # use sync::Arc;
 # use std::vec;
 # use std::rand;
@@ -392,7 +388,7 @@ let numbers_arc=Arc::new(numbers);
 and a clone of it is sent to each task
 
 ~~~
-# extern mod sync;
+# extern crate sync;
 # use sync::Arc;
 # use std::vec;
 # use std::rand;
@@ -409,7 +405,7 @@ copying only the wrapper and not its contents.
 Each task recovers the underlying data by
 
 ~~~
-# extern mod sync;
+# extern crate sync;
 # use sync::Arc;
 # use std::vec;
 # use std::rand;
@@ -499,7 +495,7 @@ the string in response.  The child terminates when it receives `0`.
 Here is the function that implements the child task:
 
 ~~~
-# extern mod sync;
+# extern crate sync;
 # fn main() {
 # use sync::DuplexStream;
     fn stringifier(channel: &DuplexStream<~str, uint>) {
@@ -524,7 +520,7 @@ response itself is simply the stringified version of the received value,
 Here is the code for the parent task:
 
 ~~~
-# extern mod sync;
+# extern crate sync;
 # use std::task::spawn;
 # use sync::DuplexStream;
 # fn stringifier(channel: &DuplexStream<~str, uint>) {

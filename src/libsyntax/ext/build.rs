@@ -242,6 +242,9 @@ pub trait AstBuilder {
 
     fn view_use(&self, sp: Span,
                 vis: ast::Visibility, vp: ~[@ast::ViewPath]) -> ast::ViewItem;
+    fn view_use_simple(&self, sp: Span, vis: ast::Visibility, path: ast::Path) -> ast::ViewItem;
+    fn view_use_simple_(&self, sp: Span, vis: ast::Visibility,
+                        ident: ast::Ident, path: ast::Path) -> ast::ViewItem;
     fn view_use_list(&self, sp: Span, vis: ast::Visibility,
                      path: ~[ast::Ident], imports: &[ast::Ident]) -> ast::ViewItem;
     fn view_use_glob(&self, sp: Span,
@@ -525,11 +528,10 @@ impl<'a> AstBuilder for ExtCtxt<'a> {
     }
 
     fn expr_call(&self, span: Span, expr: @ast::Expr, args: ~[@ast::Expr]) -> @ast::Expr {
-        self.expr(span, ast::ExprCall(expr, args, ast::NoSugar))
+        self.expr(span, ast::ExprCall(expr, args))
     }
     fn expr_call_ident(&self, span: Span, id: ast::Ident, args: ~[@ast::Expr]) -> @ast::Expr {
-        self.expr(span,
-                  ast::ExprCall(self.expr_ident(span, id), args, ast::NoSugar))
+        self.expr(span, ast::ExprCall(self.expr_ident(span, id), args))
     }
     fn expr_call_global(&self, sp: Span, fn_path: ~[ast::Ident],
                       args: ~[@ast::Expr]) -> @ast::Expr {
@@ -541,7 +543,7 @@ impl<'a> AstBuilder for ExtCtxt<'a> {
                         ident: ast::Ident,
                         mut args: ~[@ast::Expr]) -> @ast::Expr {
         args.unshift(expr);
-        self.expr(span, ast::ExprMethodCall(ast::DUMMY_NODE_ID, ident, ~[], args, ast::NoSugar))
+        self.expr(span, ast::ExprMethodCall(ast::DUMMY_NODE_ID, ident, ~[], args))
     }
     fn expr_block(&self, b: P<ast::Block>) -> @ast::Expr {
         self.expr(b.span, ast::ExprBlock(b))
@@ -899,6 +901,20 @@ impl<'a> AstBuilder for ExtCtxt<'a> {
             vis: vis,
             span: sp
         }
+    }
+
+    fn view_use_simple(&self, sp: Span, vis: ast::Visibility, path: ast::Path) -> ast::ViewItem {
+        let last = path.segments.last().unwrap().identifier;
+        self.view_use_simple_(sp, vis, last, path)
+    }
+
+    fn view_use_simple_(&self, sp: Span, vis: ast::Visibility,
+                        ident: ast::Ident, path: ast::Path) -> ast::ViewItem {
+        self.view_use(sp, vis,
+                      ~[@respan(sp,
+                                ast::ViewPathSimple(ident,
+                                                    path,
+                                                    ast::DUMMY_NODE_ID))])
     }
 
     fn view_use_list(&self, sp: Span, vis: ast::Visibility,

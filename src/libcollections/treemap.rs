@@ -12,9 +12,9 @@
 //! trees. The only requirement for the types is that the key implements
 //! `TotalOrd`.
 
-use std::util::{swap, replace};
 use std::iter::{Peekable};
 use std::cmp::Ordering;
+use std::mem::{replace, swap};
 use std::ptr;
 
 use serialize::{Encodable, Decodable, Encoder, Decoder};
@@ -1494,9 +1494,9 @@ mod test_treemap {
 
 #[cfg(test)]
 mod bench {
-
+    extern crate test;
+    use self::test::BenchHarness;
     use super::TreeMap;
-    use extra::test::BenchHarness;
     use deque::bench::{insert_rand_n, insert_seq_n, find_rand_n, find_seq_n};
 
     // Find seq

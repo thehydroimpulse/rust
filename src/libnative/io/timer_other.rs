@@ -46,14 +46,16 @@
 //!
 //! Note that all time units in this file are in *milliseconds*.
 
+#[allow(non_camel_case_types)];
+
 use std::comm::Data;
 use std::hashmap::HashMap;
 use std::libc;
+use std::mem;
 use std::os;
 use std::ptr;
 use std::rt::rtio;
 use std::sync::atomics;
-use std::unstable::intrinsics;
 
 use io::file::FileDesc;
 use io::IoResult;
@@ -87,17 +89,17 @@ pub enum Req {
 // returns the current time (in milliseconds)
 fn now() -> u64 {
     unsafe {
-        let mut now: libc::timeval = intrinsics::init();
+        let mut now: libc::timeval = mem::init();
         assert_eq!(imp::gettimeofday(&mut now, ptr::null()), 0);
         return (now.tv_sec as u64) * 1000 + (now.tv_usec as u64) / 1000;
     }
 }
 
 fn helper(input: libc::c_int, messages: Port<Req>) {
-    let mut set: imp::fd_set = unsafe { intrinsics::init() };
+    let mut set: imp::fd_set = unsafe { mem::init() };
 
     let mut fd = FileDesc::new(input, true);
-    let mut timeout: libc::timeval = unsafe { intrinsics::init() };
+    let mut timeout: libc::timeval = unsafe { mem::init() };
 
     // active timers are those which are able to be selected upon (and it's a
     // sorted list, and dead timers are those which have expired, but ownership
@@ -130,27 +132,25 @@ fn helper(input: libc::c_int, messages: Port<Req>) {
     }
 
     'outer: loop {
-        let timeout = match active {
+        let timeout = if active.len() == 0 {
             // Empty array? no timeout (wait forever for the next request)
-            [] => ptr::null(),
-
-            [~Inner { target, .. }, ..] => {
-                let now = now();
-                // If this request has already expired, then signal it and go
-                // through another iteration
-                if target <= now {
-                    signal(&mut active, &mut dead);
-                    continue;
-                }
-
-                // The actual timeout listed in the requests array is an
-                // absolute date, so here we translate the absolute time to a
-                // relative time.
-                let tm = target - now;
-                timeout.tv_sec = (tm / 1000) as libc::time_t;
-                timeout.tv_usec = ((tm % 1000) * 1000) as libc::suseconds_t;
-                &timeout as *libc::timeval
+            ptr::null()
+        } else {
+            let now = now();
+            // If this request has already expired, then signal it and go
+            // through another iteration
+            if active[0].target <= now {
+                signal(&mut active, &mut dead);
+                continue;
             }
+
+            // The actual timeout listed in the requests array is an
+            // absolute date, so here we translate the absolute time to a
+            // relative time.
+            let tm = active[0].target - now;
+            timeout.tv_sec = (tm / 1000) as libc::time_t;
+            timeout.tv_usec = ((tm % 1000) * 1000) as libc::suseconds_t;
+            &timeout as *libc::timeval
         };
 
         imp::fd_set(&mut set, input);

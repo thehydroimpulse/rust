@@ -470,7 +470,7 @@ Two examples of paths with type arguments:
 # use std::hashmap::HashMap;
 # fn f() {
 # fn id<T>(t: T) -> T { t }
-type t = HashMap<int,~str>;  // Type arguments used in a type expression
+type T = HashMap<int,~str>;  // Type arguments used in a type expression
 let x = id::<int>(10);         // Type arguments used in a call expression
 # }
 ~~~~
@@ -701,7 +701,7 @@ An example of a module:
 
 ~~~~
 mod math {
-    type complex = (f64, f64);
+    type Complex = (f64, f64);
     fn sin(f: f64) -> f64 {
         ...
 # fail!();
@@ -752,27 +752,27 @@ mod task {
 #### View items
 
 ~~~~ {.ebnf .gram}
-view_item : extern_mod_decl | use_decl ;
+view_item : extern_crate_decl | use_decl ;
 ~~~~
 
 A view item manages the namespace of a module.
 View items do not define new items, but rather, simply change other items' visibility.
 There are several kinds of view item:
 
- * [`extern mod` declarations](#extern-mod-declarations)
+ * [`extern crate` declarations](#extern-crate-declarations)
  * [`use` declarations](#use-declarations)
 
-##### Extern mod declarations
+##### Extern crate declarations
 
 ~~~~ {.ebnf .gram}
-extern_mod_decl : "extern" "mod" ident [ '(' link_attrs ')' ] ? [ '=' string_lit ] ? ;
+extern_crate_decl : "extern" "crate" ident [ '(' link_attrs ')' ] ? [ '=' string_lit ] ? ;
 link_attrs : link_attr [ ',' link_attrs ] + ;
 link_attr : ident '=' literal ;
 ~~~~
 
-An _`extern mod` declaration_ specifies a dependency on an external crate.
-The external crate is then bound into the declaring scope
-as the `ident` provided in the `extern_mod_decl`.
+An _`extern crate` declaration_ specifies a dependency on an external crate.
+The external crate is then bound into the declaring scope as the `ident` provided
+in the `extern_crate_decl`.
 
 The external crate is resolved to a specific `soname` at compile time, and a
 runtime linkage requirement to that `soname` is passed to the linker for
@@ -780,18 +780,18 @@ loading at runtime.  The `soname` is resolved at compile time by scanning the
 compiler's library path and matching the optional `crateid` provided as a string literal
 against the `crateid` attributes that were declared on the external crate when
 it was compiled.  If no `crateid` is provided, a default `name` attribute is
-assumed, equal to the `ident` given in the `extern_mod_decl`.
+assumed, equal to the `ident` given in the `extern_crate_decl`.
 
-Four examples of `extern mod` declarations:
+Four examples of `extern crate` declarations:
 
 ~~~~ {.ignore}
-extern mod pcre;
+extern crate pcre;
 
-extern mod extra; // equivalent to: extern mod extra = "extra";
+extern crate extra; // equivalent to: extern crate extra = "extra";
 
-extern mod rustextra = "extra"; // linking to 'extra' under another name
+extern crate rustextra = "extra"; // linking to 'extra' under another name
 
-extern mod foo = "some/where/rust-foo#foo:1.0"; // a full package ID for external tools
+extern crate foo = "some/where/rust-foo#foo:1.0"; // a full package ID for external tools
 ~~~~
 
 ##### Use declarations
@@ -813,7 +813,7 @@ module item. These declarations may appear at the top of [modules](#modules) and
 
 *Note*: Unlike in many languages,
 `use` declarations in Rust do *not* declare linkage dependency with external crates.
-Rather, [`extern mod` declarations](#extern-mod-declarations) declare linkage dependencies.
+Rather, [`extern crate` declarations](#extern-crate-declarations) declare linkage dependencies.
 
 Use declarations support a number of convenient shortcuts:
 
@@ -869,20 +869,20 @@ This also means that top-level module declarations should be at the crate root i
 of the declared modules within `use` items is desired.  It is also possible to use `self` and `super`
 at the beginning of a `use` item to refer to the current and direct parent modules respectively.
 All rules regarding accessing declared modules in `use` declarations applies to both module declarations
-and `extern mod` declarations.
+and `extern crate` declarations.
 
 An example of what will and will not work for `use` items:
 
 ~~~~
 # #[allow(unused_imports)];
-use foo::extra;          // good: foo is at the root of the crate
+use foo::extra::json;    // good: foo is at the root of the crate
 use foo::baz::foobaz;    // good: foo is at the root of the crate
 
 mod foo {
-    extern mod extra;
+    extern crate extra;
 
-    use foo::extra::time;  // good: foo is at crate root
-//  use extra::*;          // bad:  extra is not at the crate root
+    use foo::extra::json;  // good: foo is at crate root
+//  use extra::json::*;    // bad:  extra is not at the crate root
     use self::baz::foobaz; // good: self refers to module 'foo'
     use foo::bar::foobar;  // good: foo is at crate root
 
@@ -1725,14 +1725,17 @@ mod bar {
 pub type int8_t = i8;
 ~~~~
 
-> **Note:** In future versions of Rust, user-provided extensions to the compiler will be able to interpret attributes.
-> When this facility is provided, the compiler will distinguish between language-reserved and user-available attributes.
+> **Note:** In future versions of Rust, user-provided extensions to the compiler
+> will be able to interpret attributes.  When this facility is provided, the
+> compiler will distinguish between language-reserved and user-available
+> attributes.
 
-At present, only the Rust compiler interprets attributes, so all attribute
-names are effectively reserved. Some significant attributes include:
+At present, only the Rust compiler interprets attributes, so all attribute names
+are effectively reserved. Some significant attributes include:
 
 * The `doc` attribute, for documenting code in-place.
-* The `cfg` attribute, for conditional-compilation by build-configuration.
+* The `cfg` attribute, for conditional-compilation by build-configuration (see
+  [Conditional compilation](#conditional-compilation)).
 * The `crate_id` attribute, for describing the package ID of a crate.
 * The `lang` attribute, for custom definitions of traits and functions that are
   known to the Rust compiler (see [Language items](#language-items)).
@@ -1740,15 +1743,76 @@ names are effectively reserved. Some significant attributes include:
 * The `test` attribute, for marking functions as unit tests.
 * The `allow`, `warn`, `forbid`, and `deny` attributes, for
   controlling lint checks (see [Lint check attributes](#lint-check-attributes)).
-* The `deriving` attribute, for automatically generating
-  implementations of certain traits.
+* The `deriving` attribute, for automatically generating implementations of
+  certain traits.
 * The `inline` attribute, for expanding functions at caller location (see
   [Inline attributes](#inline-attributes)).
-* The `static_assert` attribute, for asserting that a static bool is true at compiletime
-* The `thread_local` attribute, for defining a `static mut` as a thread-local. Note that this is
-  only a low-level building block, and is not local to a *task*, nor does it provide safety.
+* The `static_assert` attribute, for asserting that a static bool is true at
+  compiletime.
+* The `thread_local` attribute, for defining a `static mut` as a thread-local.
+  Note that this is only a low-level building block, and is not local to a
+  *task*, nor does it provide safety.
 
 Other attributes may be added or removed during development of the language.
+
+### Conditional compilation
+
+Sometimes one wants to have different compiler outputs from the same code,
+depending on build target, such as targeted operating system, or to enable
+release builds.
+
+There are two kinds of configuration options, one that is either defined or not
+(`#[cfg(foo)]`), and the other that contains a string that can be checked
+against (`#[cfg(bar = "baz")]` (currently only compiler-defined configuration
+options can have the latter form).
+
+~~~~
+// The function is only included in the build when compiling for OSX
+#[cfg(target_os = "macos")]
+fn macos_only() {
+  // ...
+}
+
+// This function is only included when either foo or bar is defined
+#[cfg(foo)]
+#[cfg(bar)]
+fn needs_foo_or_bar() {
+  // ...
+}
+
+// This function is only included when compiling for a unixish OS with a 32-bit
+// architecture
+#[cfg(unix, target_word_size = "32")]
+fn on_32bit_unix() {
+  // ...
+}
+~~~~
+
+This illustrates some conditional compilation can be achieved using the
+`#[cfg(...)]` attribute. Note that `#[cfg(foo, bar)]` is a condition that needs
+both `foo` and `bar` to be defined while `#[cfg(foo)] #[cfg(bar)]` only needs
+one of `foo` and `bar` to be defined (this resembles in the disjunctive normal
+form). Additionally, one can reverse a condition by enclosing it in a
+`not(...)`, like e. g. `#[cfg(not(target_os = "win32"))]`.
+
+To pass a configuration option which triggers a `#[cfg(identifier)]` one can use
+`rustc --cfg identifier`. In addition to that, the following configurations are
+pre-defined by the compiler:
+
+ * `target_arch = "..."`. Target CPU architecture, such as `"x86"`, `"x86_64"`
+   `"mips"`, or `"arm"`.
+ * `target_endian = "..."`. Endianness of the target CPU, either `"little"` or
+   `"big"`.
+ * `target_family = "..."`. Operating system family of the target, e. g.
+   `"unix"` or `"windows"`. The value of this configuration option is defined as
+   a configuration itself, like `unix` or `windows`.
+ * `target_os = "..."`. Operating system of the target, examples include
+   `"win32"`, `"macos"`, `"linux"`, `"android"` or `"freebsd"`.
+ * `target_word_size = "..."`. Target word size in bits. This is set to `"32"`
+   for 32-bit CPU targets, and likewise set to `"64"` for 64-bit CPU targets.
+ * `test`. Only set in test builds (`rustc --test`).
+ * `unix`. See `target_family`.
+ * `windows`. See `target_family`.
 
 ### Lint check attributes
 
@@ -2760,13 +2824,13 @@ provided by an implementation of `std::iter::Iterator`.
 An example of a for loop over the contents of a vector:
 
 ~~~~
-# type foo = int;
-# fn bar(f: foo) { }
+# type Foo = int;
+# fn bar(f: Foo) { }
 # let a = 0;
 # let b = 0;
 # let c = 0;
 
-let v: &[foo] = &[a, b, c];
+let v: &[Foo] = &[a, b, c];
 
 for e in v.iter() {
     bar(*e);
@@ -3761,7 +3825,7 @@ dependencies will be used:
    with the above limitations in dynamic and static libraries, it is required
    for all upstream dependencies to be in the same format. The next question is
    whether to prefer a dynamic or a static format. The compiler currently favors
-   static linking over dynamic linking, but this can be inverted with the `-Z
+   static linking over dynamic linking, but this can be inverted with the `-C
    prefer-dynamic` flag to the compiler.
 
    What this means is that first the compiler will attempt to find all upstream

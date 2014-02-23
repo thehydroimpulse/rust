@@ -24,10 +24,11 @@ use parse::token;
 pub fn expand_deriving_decodable(cx: &mut ExtCtxt,
                                  span: Span,
                                  mitem: @MetaItem,
-                                 in_items: ~[@Item]) -> ~[@Item] {
+                                 item: @Item,
+                                 push: |@Item|) {
     let trait_def = TraitDef {
-        cx: cx, span: span,
-
+        span: span,
+        attributes: ~[],
         path: Path::new_(~["serialize", "Decodable"], None,
                          ~[~Literal(Path::new_local("__D"))], true),
         additional_bounds: ~[],
@@ -50,7 +51,7 @@ pub fn expand_deriving_decodable(cx: &mut ExtCtxt,
         ]
     };
 
-    trait_def.expand(mitem, in_items)
+    trait_def.expand(cx, mitem, item, push)
 }
 
 fn decodable_substructure(cx: &mut ExtCtxt, trait_span: Span,
@@ -87,8 +88,7 @@ fn decodable_substructure(cx: &mut ExtCtxt, trait_span: Span,
                                 decoder,
                                 cx.ident_of("read_struct"),
                                 ~[
-                cx.expr_str(trait_span,
-                            token::get_ident(substr.type_ident.name)),
+                cx.expr_str(trait_span, token::get_ident(substr.type_ident)),
                 cx.expr_uint(trait_span, nfields),
                 cx.lambda_expr_1(trait_span, result, blkarg)
             ])
@@ -101,8 +101,7 @@ fn decodable_substructure(cx: &mut ExtCtxt, trait_span: Span,
             let rvariant_arg = cx.ident_of("read_enum_variant_arg");
 
             for (i, &(name, v_span, ref parts)) in fields.iter().enumerate() {
-                variants.push(cx.expr_str(v_span,
-                                          token::get_ident(name.name)));
+                variants.push(cx.expr_str(v_span, token::get_ident(name)));
 
                 let decoded = decode_static_fields(cx,
                                                    v_span,
@@ -131,8 +130,7 @@ fn decodable_substructure(cx: &mut ExtCtxt, trait_span: Span,
                                 decoder,
                                 cx.ident_of("read_enum"),
                                 ~[
-                cx.expr_str(trait_span,
-                            token::get_ident(substr.type_ident.name)),
+                cx.expr_str(trait_span, token::get_ident(substr.type_ident)),
                 cx.lambda_expr_1(trait_span, result, blkarg)
             ])
         }
@@ -167,7 +165,7 @@ fn decode_static_fields(cx: &mut ExtCtxt,
         Named(ref fields) => {
             // use the field's span to get nicer error messages.
             let fields = fields.iter().enumerate().map(|(i, &(name, span))| {
-                let arg = getarg(cx, span, token::get_ident(name.name), i);
+                let arg = getarg(cx, span, token::get_ident(name), i);
                 cx.field_imm(span, name, arg)
             }).collect();
             cx.expr_struct_ident(trait_span, outer_pat_ident, fields)

@@ -19,10 +19,11 @@ use parse::token::InternedString;
 pub fn expand_deriving_from_primitive(cx: &mut ExtCtxt,
                                       span: Span,
                                       mitem: @MetaItem,
-                                      in_items: ~[@Item]) -> ~[@Item] {
+                                      item: @Item,
+                                      push: |@Item|) {
     let trait_def = TraitDef {
-        cx: cx, span: span,
-
+        span: span,
+        attributes: ~[],
         path: Path::new(~["std", "num", "FromPrimitive"]),
         additional_bounds: ~[],
         generics: LifetimeBounds::empty(),
@@ -62,7 +63,7 @@ pub fn expand_deriving_from_primitive(cx: &mut ExtCtxt,
         ]
     };
 
-    trait_def.expand(mitem, in_items)
+    trait_def.expand(cx, mitem, item, push)
 }
 
 fn cs_from(name: &str, cx: &mut ExtCtxt, trait_span: Span, substr: &Substructure) -> @Expr {

@@ -17,7 +17,6 @@ use std::mem;
 use std::ptr;
 use std::rt::rtio;
 use std::rt::task::BlockedTask;
-use std::unstable::intrinsics;
 
 use access::Access;
 use homing::{HomingIO, HomeHandle};
@@ -33,8 +32,8 @@ use uvll;
 /// Generic functions related to dealing with sockaddr things
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn htons(u: u16) -> u16 { intrinsics::to_be16(u as i16) as u16 }
-pub fn ntohs(u: u16) -> u16 { intrinsics::from_be16(u as i16) as u16 }
+pub fn htons(u: u16) -> u16 { mem::to_be16(u as i16) as u16 }
+pub fn ntohs(u: u16) -> u16 { mem::from_be16(u as i16) as u16 }
 
 pub fn sockaddr_to_addr(storage: &libc::sockaddr_storage,
                         len: uint) -> ip::SocketAddr {
@@ -80,7 +79,7 @@ pub fn sockaddr_to_addr(storage: &libc::sockaddr_storage,
 
 fn addr_to_sockaddr(addr: ip::SocketAddr) -> (libc::sockaddr_storage, uint) {
     unsafe {
-        let mut storage: libc::sockaddr_storage = intrinsics::init();
+        let mut storage: libc::sockaddr_storage = mem::init();
         let len = match addr.ip {
             ip::Ipv4Addr(a, b, c, d) => {
                 let storage: &mut libc::sockaddr_in =
@@ -134,7 +133,7 @@ fn socket_name(sk: SocketNameKind,
     };
 
     // Allocate a sockaddr_storage since we don't know if it's ipv4 or ipv6
-    let mut sockaddr: libc::sockaddr_storage = unsafe { intrinsics::init() };
+    let mut sockaddr: libc::sockaddr_storage = unsafe { mem::init() };
     let mut namelen = mem::size_of::<libc::sockaddr_storage>() as c_int;
 
     let sockaddr_p = &mut sockaddr as *mut libc::sockaddr_storage;
@@ -217,7 +216,7 @@ impl TcpWatcher {
             0 => {
                 req.defuse(); // uv callback now owns this request
                 let mut cx = Ctx { status: 0, task: None };
-                wait_until_woken_after(&mut cx.task, || {
+                wait_until_woken_after(&mut cx.task, &io.loop_, || {
                     req.set_data(&cx);
                 });
                 match cx.status {
@@ -499,6 +498,7 @@ impl rtio::RtioUdpSocket for UdpWatcher {
             buf: Option<Buf>,
             result: Option<(ssize_t, Option<ip::SocketAddr>)>,
         }
+        let loop_ = self.uv_loop();
         let m = self.fire_homing_missile();
         let _g = self.read_access.grant(m);
 
@@ -511,8 +511,9 @@ impl rtio::RtioUdpSocket for UdpWatcher {
                     buf: Some(slice_to_uv_buf(buf)),
                     result: None,
                 };
-                wait_until_woken_after(&mut cx.task, || {
-                    unsafe { uvll::set_data_for_uv_handle(self.handle, &cx) }
+                let handle = self.handle;
+                wait_until_woken_after(&mut cx.task, &loop_, || {
+                    unsafe { uvll::set_data_for_uv_handle(handle, &cx) }
                 });
                 match cx.result.take_unwrap() {
                     (n, _) if n < 0 =>
@@ -571,6 +572,7 @@ impl rtio::RtioUdpSocket for UdpWatcher {
         struct Ctx { task: Option<BlockedTask>, result: c_int }
 
         let m = self.fire_homing_missile();
+        let loop_ = self.uv_loop();
         let _g = self.write_access.grant(m);
 
         let mut req = Request::new(uvll::UV_UDP_SEND);
@@ -586,7 +588,7 @@ impl rtio::RtioUdpSocket for UdpWatcher {
             0 => {
                 req.defuse(); // uv callback now owns this request
                 let mut cx = Ctx { task: None, result: 0 };
-                wait_until_woken_after(&mut cx.task, || {
+                wait_until_woken_after(&mut cx.task, &loop_, || {
                     req.set_data(&cx);
                 });
                 match cx.result {
