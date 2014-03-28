@@ -3429,6 +3429,7 @@ impl<'a> Parser<'a> {
     // matches typaram = IDENT optbounds ( EQ ty )?
     fn parse_ty_param(&mut self) -> TyParam {
         let ident = self.parse_ident();
+        let sp = self.span;
         let opt_bounds = self.parse_optional_ty_param_bounds();
         // For typarams we don't care about the difference b/w "<T>" and "<T:>".
         let bounds = opt_bounds.unwrap_or_default();
@@ -3438,6 +3439,71 @@ impl<'a> Parser<'a> {
             Some(self.parse_ty(false))
         }
         else { None };
+
+        // Begin parsing higher-kinded types.
+        // We can describe the following types of type:
+        //  * Proper Types: These are values, such as int, string, char, boolean, etc...
+        //  * First-order: These are abstractions of proper types. Thus, a type that
+        //                 abstracts over a type. Examples include `List<T>` where
+        //                 `List<T>` is not a concrete type. To make a concrete type
+        //                 you'd pass a proper type as a generic type parameter.
+        //                 Thus, `List<Int>` is a concrete type.
+        //  * Higher-order/Higher-kinded: These are quite abstracted. These are types that
+        //                                abstract over types that abstract over types. Thus,
+        //                                `Functor[M[_]]` is such a type. Furthermore, we still
+        //                                don't have a concrete type. `Functor[List[Int]]` is
+        //                                an example of a concrete, higher-kinded type.
+        //
+        // We can formulate a formal description of the previous notions. We first denote
+        // the concept of Bounds such that given `T: B`, where `T` is a given type and `B` is
+        // our type bound (thus limit).
+        //
+        // Proper Types: `*`
+        // First-order Types: `* -> *`, `* -> * -> *`
+        // Higher-order/kinded Types: `(* -> *) -> *`
+        //
+        if self.token == token::LBRACKET {
+            // Keep a tally of all the subtypes we find.
+            let mut subtypes = Vec::new();
+
+            self.bump();
+            // Loop through and try to find all possible type parameters.
+            // When we hit a comma `,`, we'll continue checking;
+            // if we hit a right bracket `]`, we'll stop.
+            // If we find a comma right before the right bracket `,]`, we'll fail.
+            loop {
+                // We have an empty group. That's not correct.
+                if subtypes.len() == 0 && self.eat(&token::RBRACKET) {
+                    self.span_err(sp,
+                        "Expected at least one type parameter.");
+                    break;
+                }
+
+                if self.eat(&token::RBRACKET) {
+                    break;
+                }
+
+                // Let's check for type constructors as generic parameter `F[T]`
+                // If `T` is `_` then we infer it.
+                println!("parsing a type. token={}", self.token);
+                subtypes.push(self.parse_ty(false));
+                println!("after parsing. token={}", self.token);
+
+                // Continue parsing another type parameter. Otherwise we'll stop.
+                if self.eat(&token::COMMA) {
+                    println!("eating comma.");
+                    if self.eat(&token::RBRACKET) {
+                        self.span_err(sp,
+                            "Expected `]` but found `,`. Try removing the comma.");
+                        break;
+                    } else {
+                        continue;
+                    }
+                } else if self.eat(&token::RBRACKET) {
+                    break;
+                }
+            }
+        }
 
         TyParam {
             ident: ident,
