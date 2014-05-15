@@ -26,6 +26,9 @@ extern crate testing = "test";
 extern crate time;
 #[phase(syntax, link)]
 extern crate log;
+extern crate regex;
+#[phase(syntax)]
+extern crate regex_macros;
 extern crate libc;
 
 use std::io;
