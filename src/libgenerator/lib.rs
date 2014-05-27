@@ -77,86 +77,23 @@
 #![doc(html_logo_url = "http://www.rust-lang.org/logos/rust-logo-128x128-blk-v2.png",
        html_favicon_url = "http://www.rust-lang.org/favicon.ico",
        html_root_url = "http://static.rust-lang.org/doc/master")]
-#![feature(globs, phase)]
+#![feature(globs, phase, macro_rules)]
 //#![deny(missing_doc)]
 #![deny(deprecated_owned_vector)]
 
 #[cfg(test)] #[phase(syntax, link)] extern crate log;
 extern crate collections;
+extern crate serialize;
 extern crate regex;
 #[phase(syntax)]
 extern crate regex_macros;
-
-use std::path::Path;
-use std::io::IoResult;
-use std::io::fs::walk_dir;
 
 pub mod layout;
 pub mod page;
 pub mod filter;
 pub mod template;
 pub mod frontmatter;
+pub mod result;
+pub mod generator;
 
-pub struct Config {
-    asset_dir: Path,
-    content_dir: Path,
-    layout_dir: Path
-}
-
-pub struct Generator<'a> {
-    layouts: Vec<layout::Layout<'a>>,
-    files: Vec<page::Page<'a>>,
-    directory: Path,
-    filters: Vec<filter::Filter<'a>>,
-    config: Config
-}
-
-impl Config {
-    pub fn default() -> Config {
-        Config {
-            asset_dir: Path::new("assets"),
-            content_dir: Path::new("content"),
-            layout_dir: Path::new("layouts")
-        }
-    }
-}
-
-impl<'a> Generator<'a> {
-
-    /// The path is the working directory to look inside. This includes assets, markdown files,
-    /// assets, etc...
-    pub fn new(path: Path) -> Generator<'a> {
-        Generator {
-            layouts: Vec::new(),
-            files: Vec::new(),
-            directory: path,
-            filters: Vec::new(),
-            config: Config::default()
-        }
-    }
-
-    /// Lookup all the files and directories within the current folder. This will shove all
-    /// the files within their appropriate vector and start reading in the files.
-    ///
-    /// Currently, the folder structure is static:
-    ///
-    /// ```notrust
-    /// static/
-    ///     + content/
-    ///     + layouts/
-    ///     + assets/
-    ///     + output
-    /// ```
-    pub fn lookup(&mut self) -> IoResult<()> {
-        for item in try!(walk_dir(&self.directory)) {
-            println!("{}", item.display());
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-}
+pub type Generator<'a> = generator::Generator<'a>;

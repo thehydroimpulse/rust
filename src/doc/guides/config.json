@@ -1,3 +1,7 @@
 {
-  "404": "/404"
+  "permalinks": "/:path/:title",
+  "output": "output/",
+  "content": "content",
+  "assets": "assets",
+  "layouts": "layouts"
 }

@@ -1,0 +1,6 @@
+{
+    "layouts_path": "layouts",
+    "content_path": "content",
+    "assets_path": "assets",
+    "output_path": "output"
+}
