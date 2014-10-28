@@ -25,8 +25,7 @@ use clean;
 use stability_summary::ModuleSummary;
 use html::item_type;
 use html::item_type::ItemType;
-use html::render;
-use html::render::{cache_key, current_location_key};
+use html::{cache_key, current_location_key};
 
 /// Helper to render an optional visibility with a space after it (if the
 /// visibility is preset)

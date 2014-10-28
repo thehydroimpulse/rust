@@ -11,15 +11,23 @@
 use std::fmt;
 use std::io;
 
-use externalfiles::ExternalHtml;
-
 #[deriving(Clone)]
 pub struct Layout {
     pub logo: String,
     pub favicon: String,
-    pub external_html: ExternalHtml,
     pub krate: String,
     pub playground_url: String,
+}
+
+impl Layout {
+    pub fn new(logo: String, favicon: String, krate: String, playground_url: String) -> Layout {
+        Layout {
+            logo: logo,
+            favicon: favicon,
+            krate: krate,
+            playground_url: playground_url
+        }
+    }
 }
 
 pub struct Page<'a> {
@@ -51,7 +59,7 @@ r##"<!DOCTYPE html>
     {favicon}
     {in_header}
 </head>
-<body class="rustdoc">
+<body>
     <!--[if lte IE 8]>
     <div class="warning">
         This old browser is unsupported and will most likely display funky
@@ -59,61 +67,71 @@ r##"<!DOCTYPE html>
     </div>
     <![endif]-->
 
-    {before_content}
-
-    <section class="sidebar">
-        {logo}
-        {sidebar}
-    </section>
-
-    <nav class="sub">
-        <form class="search-form js-only">
-            <div class="search-container">
-                <input class="search-input" name="search"
-                       autocomplete="off"
-                       placeholder="Click or press 'S' to search, '?' for more options..."
-                       type="search">
+    <div class="container">
+      <header>
+        <section>
+          <a href="#">{logo} <span class="crate">Crate</span> {krate}</a>
+        </section>
+      </header>
+      <section class="content">
+        <div class="sidebar">
+          {sidebar}
+          <div class="group large">
+            <div class="bar"></div>
+            <span class="circle"></span>
+            <span class="name">Docs</span>
+            <div class="sub-group active">
+              <span class="circle"></span>
+              <span class="name"><a href="#">Introduction</a></span>
             </div>
-        </form>
-    </nav>
-
-    <section id='main' class="content {ty}">{content}</section>
-    <section id='search' class="content hidden"></section>
-
-    <section class="footer"></section>
-
-    <div id="help" class="hidden">
-        <div class="shortcuts">
-            <h1>Keyboard shortcuts</h1>
-            <dl>
-                <dt>?</dt>
-                <dd>Show this help dialog</dd>
-                <dt>S</dt>
-                <dd>Focus the search field</dd>
-                <dt>&larrb;</dt>
-                <dd>Move up in search results</dd>
-                <dt>&rarrb;</dt>
-                <dd>Move down in search results</dd>
-                <dt>&#9166;</dt>
-                <dd>Go to active search result</dd>
-            </dl>
+          </div>
+          <div class="group medium">
+            <div class="bar"></div>
+            <span class="circle"></span>
+            <span class="name">Crates</span>
+            <div class="sub-group stable" title="Stable">
+              <span class="circle"></span>
+              <span class="name"><a href="#">Gossip</a></span>
+            </div>
+            <div class="sub-group unstable" title="Unstable">
+              <span class="circle"></span>
+              <span class="name"><a href="#">Data</a></span>
+            </div>
+          </div>
+          <div class="group small dependencies">
+            <div class="bar"></div>
+            <span class="circle"></span>
+            <span class="name">Dependencies</span>
+            <span class="expand">+</span>
+            <div class="sub-group">
+              <span class="circle"></span>
+              <span class="name"><a href="#">Docopt</a></span>
+            </div>
+            <div class="sub-group">
+              <span class="circle"></span>
+              <span class="name"><a href="#">Teepee</a></span>
+            </div>
+            <div class="sub-group">
+              <span class="circle"></span>
+              <span class="name"><a href="#">Nanomsg</a></span>
+            </div>
+            <div class="sub-group">
+              <span class="circle"></span>
+              <span class="name"><a href="#">Uuid</a></span>
+            </div>
+            <div class="sub-group">
+              <span class="circle"></span>
+              <span class="name"><a href="#">Msgpack</a></span>
+            </div>
+          </div>
         </div>
-        <div class="infos">
-            <h1>Search tricks</h1>
-            <p>
-                Prefix searches with a type followed by a colon (e.g.
-                <code>fn:</code>) to restrict the search to a given type.
-            </p>
-            <p>
-                Accepted types are: <code>fn</code>, <code>mod</code>,
-                <code>struct</code>, <code>enum</code>,
-                <code>trait</code>, <code>typedef</code> (or
-                <code>tdef</code>).
-            </p>
+        <div class="wrapper">
+            {before_content}
+            {content}
+            {after_content}
         </div>
+      </section>
     </div>
-
-    {after_content}
 
     <script>
         window.rootPath = "{root_path}";
@@ -121,23 +139,23 @@ r##"<!DOCTYPE html>
         window.playgroundUrl = "{play_url}";
     </script>
     <script src="{root_path}jquery.js"></script>
-    <script src="{root_path}main.js"></script>
+    <!--<script src="{root_path}main.js"></script>-->
     {play_js}
-    <script async src="{root_path}search-index.js"></script>
+    <!--<script async src="{root_path}search-index.js"></script>-->
 </body>
 </html>"##,
     content   = *t,
     root_path = page.root_path,
-    ty        = page.ty,
     logo      = if layout.logo.len() == 0 {
         "".to_string()
     } else {
-        format!("<a href='{}{}/index.html'>\
-                 <img src='{}' alt='' width='100'></a>",
+        format!("<a class='logo' href='{}{}/index.html'>\
+                 <img src='{}' alt='' width='30'></a>",
                 page.root_path, layout.krate,
                 layout.logo)
     },
     title     = page.title,
+    sidebar = *sidebar,
     description = page.description,
     keywords = page.keywords,
     favicon   = if layout.favicon.len() == 0 {
@@ -148,7 +166,6 @@ r##"<!DOCTYPE html>
     in_header = layout.external_html.in_header,
     before_content = layout.external_html.before_content,
     after_content = layout.external_html.after_content,
-    sidebar   = *sidebar,
     krate     = layout.krate,
     play_url  = layout.playground_url,
     play_js   = if layout.playground_url.len() == 0 {

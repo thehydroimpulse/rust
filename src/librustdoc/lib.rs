@@ -26,7 +26,9 @@ extern crate serialize;
 extern crate syntax;
 extern crate "test" as testing;
 extern crate time;
-#[phase(plugin, link)] extern crate log;
+
+#[phase(plugin, link)]
+extern crate log;
 
 use std::io;
 use std::io::{File, MemWriter};
@@ -34,27 +36,21 @@ use std::collections::HashMap;
 use std::collections::hashmap::{Occupied, Vacant};
 use serialize::{json, Decodable, Encodable};
 use externalfiles::ExternalHtml;
+use html::HtmlRenderer;
+use renderer::Renderer;
 
 // reexported from `clean` so it can be easily updated with the mod itself
 pub use clean::SCHEMA_VERSION;
 
+pub mod html;
 pub mod clean;
 pub mod core;
 pub mod doctree;
 #[macro_escape]
 pub mod externalfiles;
 pub mod fold;
-pub mod html {
-    pub mod highlight;
-    pub mod escape;
-    pub mod item_type;
-    pub mod format;
-    pub mod layout;
-    pub mod markdown;
-    pub mod render;
-    pub mod toc;
-}
 pub mod markdown;
+pub mod renderer;
 pub mod passes;
 pub mod plugins;
 pub mod stability_summary;
@@ -100,7 +96,7 @@ pub fn opts() -> Vec<getopts::OptGroup> {
         optopt("r", "input-format", "the input type of the specified file",
                "[rust|json]"),
         optopt("w", "output-format", "the output type to write",
-               "[html|json]"),
+               "[html|json|text]"),
         optopt("o", "output", "where to place the output", "PATH"),
         optopt("", "crate-name", "specify the name of this crate", "NAME"),
         optmulti("L", "library-path", "directory to add to crate search path",
@@ -241,7 +237,8 @@ pub fn main_args(args: &[String]) -> int {
     let started = time::precise_time_ns();
     match matches.opt_str("w").as_ref().map(|s| s.as_slice()) {
         Some("html") | None => {
-            match html::render::run(krate, &external_html, output.unwrap_or(Path::new("doc"))) {
+            let mut html = HtmlRenderer::new(krate);
+            match html.render(output.unwrap_or(Path::new("doc"))) {
                 Ok(()) => {}
                 Err(e) => fail!("failed to generate documentation: {}", e),
             }

@@ -35,9 +35,9 @@ use std::str;
 use std::string;
 use std::collections::HashMap;
 
-use html::toc::TocBuilder;
-use html::highlight;
-use html::escape::Escape;
+use toc::TocBuilder;
+use highlight;
+use escape::Escape;
 use test;
 
 /// A unit struct which has the `fmt::Show` trait implemented. When

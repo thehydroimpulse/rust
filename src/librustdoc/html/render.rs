@@ -55,7 +55,7 @@ use rustc::util::nodemap::NodeSet;
 use clean;
 use doctree;
 use fold::DocFolder;
-use html::format::{VisSpace, Method, FnStyleSpace, MutableSpace, Stability};
+use html::format::{VisSpace, Method, FnStyleSpace, Stability};
 use html::format::{ConciseStability, WhereClause};
 use html::highlight;
 use html::item_type::{ItemType, shortty};
@@ -486,12 +486,6 @@ fn write_shared(cx: &Context,
     try!(write(cx.dst.join("main.css"), include_bin!("static/main.css")));
     try!(write(cx.dst.join("normalize.css"),
                include_bin!("static/normalize.css")));
-    try!(write(cx.dst.join("FiraSans-Regular.woff"),
-               include_bin!("static/FiraSans-Regular.woff")));
-    try!(write(cx.dst.join("FiraSans-Medium.woff"),
-               include_bin!("static/FiraSans-Medium.woff")));
-    try!(write(cx.dst.join("Heuristica-Italic.woff"),
-               include_bin!("static/Heuristica-Italic.woff")));
     try!(write(cx.dst.join("SourceSerifPro-Regular.woff"),
                include_bin!("static/SourceSerifPro-Regular.woff")));
     try!(write(cx.dst.join("SourceSerifPro-Bold.woff"),
@@ -1233,148 +1227,8 @@ impl Context {
     }
 }
 
-impl<'a> Item<'a> {
-    fn ismodule(&self) -> bool {
-        match self.item.inner {
-            clean::ModuleItem(..) => true, _ => false
-        }
-    }
-
-    /// Generate a url appropriate for an `href` attribute back to the source of
-    /// this item.
-    ///
-    /// The url generated, when clicked, will redirect the browser back to the
-    /// original source code.
-    ///
-    /// If `None` is returned, then a source link couldn't be generated. This
-    /// may happen, for example, with externally inlined items where the source
-    /// of their crate documentation isn't known.
-    fn href(&self) -> Option<String> {
-        // If this item is part of the local crate, then we're guaranteed to
-        // know the span, so we plow forward and generate a proper url. The url
-        // has anchors for the line numbers that we're linking to.
-        if ast_util::is_local(self.item.def_id) {
-            let mut path = Vec::new();
-            clean_srcpath(self.item.source.filename.as_bytes(), |component| {
-                path.push(component.to_string());
-            });
-            let href = if self.item.source.loline == self.item.source.hiline {
-                format!("{}", self.item.source.loline)
-            } else {
-                format!("{}-{}",
-                        self.item.source.loline,
-                        self.item.source.hiline)
-            };
-            Some(format!("{root}src/{krate}/{path}.html#{href}",
-                         root = self.cx.root_path,
-                         krate = self.cx.layout.krate,
-                         path = path.connect("/"),
-                         href = href))
-
-        // If this item is not part of the local crate, then things get a little
-        // trickier. We don't actually know the span of the external item, but
-        // we know that the documentation on the other end knows the span!
-        //
-        // In this case, we generate a link to the *documentation* for this type
-        // in the original crate. There's an extra URL parameter which says that
-        // we want to go somewhere else, and the JS on the destination page will
-        // pick it up and instantly redirect the browser to the source code.
-        //
-        // If we don't know where the external documentation for this crate is
-        // located, then we return `None`.
-        } else {
-            let cache = cache_key.get().unwrap();
-            let path = &cache.external_paths[self.item.def_id];
-            let root = match cache.extern_locations[self.item.def_id.krate] {
-                Remote(ref s) => s.to_string(),
-                Local => self.cx.root_path.clone(),
-                Unknown => return None,
-            };
-            Some(format!("{root}{path}/{file}?gotosrc={goto}",
-                         root = root,
-                         path = path.slice_to(path.len() - 1).connect("/"),
-                         file = item_path(self.item),
-                         goto = self.item.def_id.node))
-        }
-    }
-}
-
-
-
 impl<'a> fmt::Show for Item<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        // Write the breadcrumb trail header for the top
-        try!(write!(fmt, "\n<h1 class='fqn'><span class='in-band'>"));
-        match self.item.inner {
-            clean::ModuleItem(ref m) => if m.is_crate {
-                    try!(write!(fmt, "Crate "));
-                } else {
-                    try!(write!(fmt, "Module "));
-                },
-            clean::FunctionItem(..) => try!(write!(fmt, "Function ")),
-            clean::TraitItem(..) => try!(write!(fmt, "Trait ")),
-            clean::StructItem(..) => try!(write!(fmt, "Struct ")),
-            clean::EnumItem(..) => try!(write!(fmt, "Enum ")),
-            clean::PrimitiveItem(..) => try!(write!(fmt, "Primitive Type ")),
-            _ => {}
-        }
-        let is_primitive = match self.item.inner {
-            clean::PrimitiveItem(..) => true,
-            _ => false,
-        };
-        if !is_primitive {
-            let cur = self.cx.current.as_slice();
-            let amt = if self.ismodule() { cur.len() - 1 } else { cur.len() };
-            for (i, component) in cur.iter().enumerate().take(amt) {
-                try!(write!(fmt, "<a href='{}index.html'>{}</a>::<wbr>",
-                            "../".repeat(cur.len() - i - 1),
-                            component.as_slice()));
-            }
-        }
-        try!(write!(fmt, "<a class='{}' href=''>{}</a>",
-                    shortty(self.item), self.item.name.as_ref().unwrap().as_slice()));
-
-        // Write stability level
-        try!(write!(fmt, "<wbr>{}", Stability(&self.item.stability)));
-
-        try!(write!(fmt, "</span>")); // in-band
-        // Links to out-of-band information, i.e. src and stability dashboard
-        try!(write!(fmt, "<span class='out-of-band'>"));
-
-        // Write stability dashboard link
-        match self.item.inner {
-            clean::ModuleItem(ref m) if m.is_crate => {
-                try!(write!(fmt, "<a href='stability.html'>[stability]</a> "));
-            }
-            _ => {}
-        };
-
-        try!(write!(fmt,
-        r##"<span id='render-detail'>
-            <a id="collapse-all" href="#">[-]
-            </a>&nbsp;<a id="expand-all" href="#">[+]</a>
-        </span>"##));
-
-        // Write `src` tag
-        //
-        // When this item is part of a `pub use` in a downstream crate, the
-        // [src] link in the downstream documentation will actually come back to
-        // this page, and this link will be auto-clicked. The `id` attribute is
-        // used to find the link to auto-click.
-        if self.cx.include_sources && !is_primitive {
-            match self.href() {
-                Some(l) => {
-                    try!(write!(fmt, "<a id='src-{}' href='{}'>[src]</a>",
-                                self.item.def_id.node, l));
-                }
-                None => {}
-            }
-        }
-
-        try!(write!(fmt, "</span>")); // out-of-band
-
-        try!(write!(fmt, "</h1>\n"));
-
         match self.item.inner {
             clean::ModuleItem(ref m) => {
                 item_module(fmt, self.cx, self.item, m.items.as_slice())
@@ -1405,20 +1259,6 @@ fn item_path(item: &clean::Item) -> String {
     }
 }
 
-fn full_path(cx: &Context, item: &clean::Item) -> String {
-    let mut s = cx.current.connect("::");
-    s.push_str("::");
-    s.push_str(item.name.as_ref().unwrap().as_slice());
-    return s
-}
-
-fn blank<'a>(s: Option<&'a str>) -> &'a str {
-    match s {
-        Some(s) => s,
-        None => ""
-    }
-}
-
 fn shorter<'a>(s: Option<&'a str>) -> &'a str {
     match s {
         Some(s) => match s.find_str("\n\n") {
@@ -1439,7 +1279,7 @@ fn document(w: &mut fmt::Formatter, item: &clean::Item) -> fmt::Result {
     Ok(())
 }
 
-fn item_module(w: &mut fmt::Formatter, cx: &Context,
+fn item_module(w: &mut fmt::Formatter, _cx: &Context,
                item: &clean::Item, items: &[clean::Item]) -> fmt::Result {
     try!(document(w, item));
 
@@ -1490,138 +1330,7 @@ fn item_module(w: &mut fmt::Formatter, cx: &Context,
     }
 
     indices.sort_by(|&i1, &i2| cmp(&items[i1], &items[i2], i1, i2));
-
-    debug!("{}", indices);
-    let mut curty = None;
-    for &idx in indices.iter() {
-        let myitem = &items[idx];
-
-        let myty = Some(shortty(myitem));
-        if myty != curty {
-            if curty.is_some() {
-                try!(write!(w, "</table>"));
-            }
-            curty = myty;
-            let (short, name) = match myitem.inner {
-                clean::ModuleItem(..)          => ("modules", "Modules"),
-                clean::StructItem(..)          => ("structs", "Structs"),
-                clean::EnumItem(..)            => ("enums", "Enums"),
-                clean::FunctionItem(..)        => ("functions", "Functions"),
-                clean::TypedefItem(..)         => ("types", "Type Definitions"),
-                clean::StaticItem(..)          => ("statics", "Statics"),
-                clean::ConstantItem(..)        => ("constants", "Constants"),
-                clean::TraitItem(..)           => ("traits", "Traits"),
-                clean::ImplItem(..)            => ("impls", "Implementations"),
-                clean::ViewItemItem(..)        => ("reexports", "Reexports"),
-                clean::TyMethodItem(..)        => ("tymethods", "Type Methods"),
-                clean::MethodItem(..)          => ("methods", "Methods"),
-                clean::StructFieldItem(..)     => ("fields", "Struct Fields"),
-                clean::VariantItem(..)         => ("variants", "Variants"),
-                clean::ForeignFunctionItem(..) => ("ffi-fns", "Foreign Functions"),
-                clean::ForeignStaticItem(..)   => ("ffi-statics", "Foreign Statics"),
-                clean::MacroItem(..)           => ("macros", "Macros"),
-                clean::PrimitiveItem(..)       => ("primitives", "Primitive Types"),
-                clean::AssociatedTypeItem(..)  => ("associated-types", "Associated Types"),
-            };
-            try!(write!(w,
-                        "<h2 id='{id}' class='section-header'>\
-                        <a href=\"#{id}\">{name}</a></h2>\n<table>",
-                        id = short, name = name));
-        }
-
-        struct Initializer<'a>(&'a str, Item<'a>);
-        impl<'a> fmt::Show for Initializer<'a> {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                let Initializer(s, item) = *self;
-                if s.len() == 0 { return Ok(()); }
-                try!(write!(f, "<code> = </code>"));
-                if s.contains("\n") {
-                    match item.href() {
-                        Some(url) => {
-                            write!(f, "<a href='{}'>[definition]</a>",
-                                   url)
-                        }
-                        None => Ok(()),
-                    }
-                } else {
-                    write!(f, "<code>{}</code>", s.as_slice())
-                }
-            }
-        }
-
-        match myitem.inner {
-            clean::StaticItem(ref s) | clean::ForeignStaticItem(ref s) => {
-                try!(write!(w, "
-                    <tr>
-                        <td>{}<code>{}static {}{}: {}</code>{}</td>
-                        <td class='docblock'>{}&nbsp;</td>
-                    </tr>
-                ",
-                ConciseStability(&myitem.stability),
-                VisSpace(myitem.visibility),
-                MutableSpace(s.mutability),
-                *myitem.name.as_ref().unwrap(),
-                s.type_,
-                Initializer(s.expr.as_slice(), Item { cx: cx, item: myitem }),
-                Markdown(blank(myitem.doc_value()))));
-            }
-            clean::ConstantItem(ref s) => {
-                try!(write!(w, "
-                    <tr>
-                        <td>{}<code>{}const {}: {}</code>{}</td>
-                        <td class='docblock'>{}&nbsp;</td>
-                    </tr>
-                ",
-                ConciseStability(&myitem.stability),
-                VisSpace(myitem.visibility),
-                *myitem.name.as_ref().unwrap(),
-                s.type_,
-                Initializer(s.expr.as_slice(), Item { cx: cx, item: myitem }),
-                Markdown(blank(myitem.doc_value()))));
-            }
-
-            clean::ViewItemItem(ref item) => {
-                match item.inner {
-                    clean::ExternCrate(ref name, ref src, _) => {
-                        try!(write!(w, "<tr><td><code>extern crate {}",
-                                      name.as_slice()));
-                        match *src {
-                            Some(ref src) => try!(write!(w, " = \"{}\"",
-                                                           src.as_slice())),
-                            None => {}
-                        }
-                        try!(write!(w, ";</code></td></tr>"));
-                    }
-
-                    clean::Import(ref import) => {
-                        try!(write!(w, "<tr><td><code>{}{}</code></td></tr>",
-                                      VisSpace(myitem.visibility),
-                                      *import));
-                    }
-                }
-
-            }
-
-            _ => {
-                if myitem.name.is_none() { continue }
-                try!(write!(w, "
-                    <tr>
-                        <td>{stab}<a class='{class}' href='{href}'
-                               title='{title}'>{}</a></td>
-                        <td class='docblock short'>{}</td>
-                    </tr>
-                ",
-                *myitem.name.as_ref().unwrap(),
-                Markdown(shorter(myitem.doc_value())),
-                class = shortty(myitem),
-                href = item_path(myitem),
-                title = full_path(cx, myitem),
-                stab = ConciseStability(&myitem.stability)));
-            }
-        }
-    }
-
-    write!(w, "</table>")
+    write!(w, "")
 }
 
 fn item_function(w: &mut fmt::Formatter, it: &clean::Item,
