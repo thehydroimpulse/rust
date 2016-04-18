@@ -898,6 +898,7 @@ impl<'a> MethodDef<'a> {
             node: ast::ImplItemKind::Method(ast::MethodSig {
                 generics: fn_generics,
                 abi: abi,
+                async: ast::Async::Disabled,
                 explicit_self: explicit_self,
                 unsafety: unsafety,
                 constness: ast::Constness::NotConst,

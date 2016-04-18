@@ -96,7 +96,7 @@ impl<'a, 'v> Visitor<'v> for CheckConstFn<'a> {
                 _fn_id: ast::NodeId) {
         visit::walk_fn(self, fk, fd, b, s);
         match fk {
-            FnKind::ItemFn(_, _, _, ast::Constness::Const, _, _) => {},
+            FnKind::ItemFn(_, _, _, ast::Constness::Const, _, _, _) => {},
             FnKind::Method(_, m, _) if m.constness == ast::Constness::Const => {},
             _ => return,
         }

@@ -985,6 +985,7 @@ impl<'a> AstBuilder for ExtCtxt<'a> {
                               ast::Unsafety::Normal,
                               ast::Constness::NotConst,
                               Abi::Rust,
+                              ast::Async::Disabled,
                               generics,
                               body))
     }

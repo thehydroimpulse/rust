@@ -1087,7 +1087,7 @@ impl<'a, 'v> Visitor<'v> for PostExpansionVisitor<'a> {
                 _node_id: NodeId) {
         // check for const fn declarations
         match fn_kind {
-            FnKind::ItemFn(_, _, _, ast::Constness::Const, _, _) => {
+            FnKind::ItemFn(_, _, _, ast::Constness::Const, _, _, _) => {
                 self.gate_feature("const_fn", span, "const fn is unstable");
             }
             _ => {
@@ -1099,12 +1099,12 @@ impl<'a, 'v> Visitor<'v> for PostExpansionVisitor<'a> {
         }
 
         match fn_kind {
-            FnKind::ItemFn(_, _, _, _, abi, _) if abi == Abi::RustIntrinsic => {
+            FnKind::ItemFn(_, _, _, _, abi, _, _) if abi == Abi::RustIntrinsic => {
                 self.gate_feature("intrinsics",
                                   span,
                                   "intrinsics are subject to change")
             }
-            FnKind::ItemFn(_, _, _, _, abi, _) |
+            FnKind::ItemFn(_, _, _, _, abi, _, _) |
             FnKind::Method(_, &ast::MethodSig { abi, .. }, _) => match abi {
                 Abi::RustCall => {
                     self.gate_feature("unboxed_closures", span,

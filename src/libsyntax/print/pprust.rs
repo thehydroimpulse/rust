@@ -381,13 +381,14 @@ pub fn ident_to_string(id: ast::Ident) -> String {
 pub fn fun_to_string(decl: &ast::FnDecl,
                      unsafety: ast::Unsafety,
                      constness: ast::Constness,
+                     async: ast::Async,
                      name: ast::Ident,
                      opt_explicit_self: Option<&ast::SelfKind>,
                      generics: &ast::Generics)
                      -> String {
     to_string(|s| {
         s.head("")?;
-        s.print_fn(decl, unsafety, constness, Abi::Rust, Some(name),
+        s.print_fn(decl, unsafety, constness, Abi::Rust, async, Some(name),
                    generics, opt_explicit_self, &ast::Visibility::Inherited)?;
         s.end()?; // Close the head box
         s.end() // Close the outer box
@@ -1003,6 +1004,7 @@ impl<'a> State<'a> {
                 };
                 self.print_ty_fn(f.abi,
                                  f.unsafety,
+                                 f.async,
                                  &f.decl,
                                  None,
                                  &generics,
@@ -1053,7 +1055,7 @@ impl<'a> State<'a> {
                 self.head("")?;
                 self.print_fn(decl, ast::Unsafety::Normal,
                               ast::Constness::NotConst,
-                              Abi::Rust, Some(item.ident),
+                              Abi::Rust, ast::Async::Disabled, Some(item.ident),
                               generics, None, &item.vis)?;
                 self.end()?; // end head-ibox
                 word(&mut self.s, ";")?;
@@ -1173,13 +1175,14 @@ impl<'a> State<'a> {
                 word(&mut self.s, ";")?;
                 self.end()?; // end the outer cbox
             }
-            ast::ItemKind::Fn(ref decl, unsafety, constness, abi, ref typarams, ref body) => {
+            ast::ItemKind::Fn(ref decl, unsafety, constness, abi, async, ref typarams, ref body) => {
                 self.head("")?;
                 self.print_fn(
                     decl,
                     unsafety,
                     constness,
                     abi,
+                    async,
                     Some(item.ident),
                     typarams,
                     None,
@@ -1529,6 +1532,7 @@ impl<'a> State<'a> {
                       m.unsafety,
                       m.constness,
                       m.abi,
+                      m.async,
                       Some(ident),
                       &m.generics,
                       Some(&m.explicit_self.node),
@@ -2649,11 +2653,12 @@ impl<'a> State<'a> {
                     unsafety: ast::Unsafety,
                     constness: ast::Constness,
                     abi: abi::Abi,
+                    async: ast::Async,
                     name: Option<ast::Ident>,
                     generics: &ast::Generics,
                     opt_explicit_self: Option<&ast::SelfKind>,
                     vis: &ast::Visibility) -> io::Result<()> {
-        self.print_fn_header_info(unsafety, constness, abi, vis)?;
+        self.print_fn_header_info(unsafety, constness, abi, async, vis)?;
 
         if let Some(name) = name {
             self.nbsp()?;
@@ -3009,6 +3014,7 @@ impl<'a> State<'a> {
     pub fn print_ty_fn(&mut self,
                        abi: abi::Abi,
                        unsafety: ast::Unsafety,
+                       async: ast::Async,
                        decl: &ast::FnDecl,
                        name: Option<ast::Ident>,
                        generics: &ast::Generics,
@@ -3031,6 +3037,7 @@ impl<'a> State<'a> {
                       unsafety,
                       ast::Constness::NotConst,
                       abi,
+                      async,
                       name,
                       &generics,
                       opt_explicit_self,
@@ -3109,12 +3116,18 @@ impl<'a> State<'a> {
                                 unsafety: ast::Unsafety,
                                 constness: ast::Constness,
                                 abi: Abi,
+                                async: ast::Async,
                                 vis: &ast::Visibility) -> io::Result<()> {
         word(&mut self.s, &visibility_qualified(vis, ""))?;
 
         match constness {
             ast::Constness::NotConst => {}
             ast::Constness::Const => self.word_nbsp("const")?
+        }
+
+        match async {
+            ast::Async::Enabled => self.word_nbsp("async")?,
+            ast::Async::Disabled => {}
         }
 
         self.print_unsafety(unsafety)?;
@@ -3157,6 +3170,7 @@ mod tests {
         let generics = ast::Generics::default();
         assert_eq!(fun_to_string(&decl, ast::Unsafety::Normal,
                                  ast::Constness::NotConst,
+                                 ast::Async::Disabled,
                                  abba_ident,
                                  None, &generics),
                    "fn abba()");

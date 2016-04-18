@@ -17,7 +17,7 @@ use ast::Unsafety;
 use ast::{Mod, Arg, Arm, Attribute, BindingMode, TraitItemKind};
 use ast::Block;
 use ast::{BlockCheckMode, CaptureBy};
-use ast::{Constness, Crate, CrateConfig};
+use ast::{Async, Constness, Crate, CrateConfig};
 use ast::{Decl, DeclKind, Defaultness};
 use ast::{EMPTY_CTXT, EnumDef, ExplicitSelf};
 use ast::{Expr, ExprKind, RangeLimits};
@@ -1116,7 +1116,8 @@ impl<'a> Parser<'a> {
     pub fn token_is_bare_fn_keyword(&mut self) -> bool {
         self.check_keyword(keywords::Fn) ||
             self.check_keyword(keywords::Unsafe) ||
-            self.check_keyword(keywords::Extern)
+            self.check_keyword(keywords::Extern) ||
+            self.check_keyword(keywords::Async)
     }
 
     pub fn get_lifetime(&mut self) -> ast::Ident {
@@ -1195,6 +1196,12 @@ impl<'a> Parser<'a> {
             Abi::Rust
         };
 
+        let async = if self.eat_keyword(keywords::Async) {
+            Async::Enabled
+        } else {
+            Async::Disabled
+        };
+
         self.expect_keyword(keywords::Fn)?;
         let (inputs, variadic) = self.parse_fn_args(false, true)?;
         let ret_ty = self.parse_ret_ty()?;
@@ -1206,6 +1213,7 @@ impl<'a> Parser<'a> {
         Ok(TyKind::BareFn(P(BareFnTy {
             abi: abi,
             unsafety: unsafety,
+            async: async,
             lifetimes: lifetime_defs,
             decl: decl
         })))
@@ -1280,7 +1288,7 @@ impl<'a> Parser<'a> {
                 };
                 (ident, TraitItemKind::Const(ty, default))
             } else {
-                let (constness, unsafety, abi) = match p.parse_fn_front_matter() {
+                let (constness, unsafety, abi, async) = match p.parse_fn_front_matter() {
                     Ok(cua) => cua,
                     Err(e) => {
                         loop {
@@ -1320,6 +1328,7 @@ impl<'a> Parser<'a> {
                 let sig = ast::MethodSig {
                     unsafety: unsafety,
                     constness: constness,
+                    async: async,
                     decl: d,
                     generics: generics,
                     abi: abi,
@@ -4882,13 +4891,14 @@ impl<'a> Parser<'a> {
     fn parse_item_fn(&mut self,
                      unsafety: Unsafety,
                      constness: Constness,
-                     abi: abi::Abi)
+                     abi: abi::Abi,
+                     async: Async)
                      -> PResult<'a, ItemInfo> {
         let (ident, mut generics) = self.parse_fn_header()?;
         let decl = self.parse_fn_decl(false)?;
         generics.where_clause = self.parse_where_clause()?;
         let (inner_attrs, body) = self.parse_inner_attrs_and_block()?;
-        Ok((ident, ItemKind::Fn(decl, unsafety, constness, abi, generics, body), Some(inner_attrs)))
+        Ok((ident, ItemKind::Fn(decl, unsafety, constness, abi, async, generics, body), Some(inner_attrs)))
     }
 
     /// true if we are looking at `const ID`, false for things like `const fn` etc
@@ -4905,23 +4915,33 @@ impl<'a> Parser<'a> {
     /// - `unsafe fn`
     /// - `const unsafe fn`
     /// - `extern fn`
+    /// - `async fn`
     /// - etc
     pub fn parse_fn_front_matter(&mut self)
-                                 -> PResult<'a, (ast::Constness, ast::Unsafety, abi::Abi)> {
+                                 -> PResult<'a, (ast::Constness, ast::Unsafety, abi::Abi, ast::Async)> {
         let is_const_fn = self.eat_keyword(keywords::Const);
         let unsafety = self.parse_unsafety()?;
-        let (constness, unsafety, abi) = if is_const_fn {
-            (Constness::Const, unsafety, Abi::Rust)
+        let (constness, unsafety, abi, async) = if is_const_fn {
+            (Constness::Const, unsafety, Abi::Rust, Async::Disabled)
         } else {
             let abi = if self.eat_keyword(keywords::Extern) {
                 self.parse_opt_abi()?.unwrap_or(Abi::C)
             } else {
                 Abi::Rust
             };
-            (Constness::NotConst, unsafety, abi)
+
+            let async = if self.eat_keyword(keywords::Async) {
+                Async::Enabled
+            } else {
+                Async::Disabled
+            };
+
+            (Constness::NotConst, unsafety, abi, async)
         };
+
+
         self.expect_keyword(keywords::Fn)?;
-        Ok((constness, unsafety, abi))
+        Ok((constness, unsafety, abi, async))
     }
 
     /// Parse an impl item.
@@ -5019,7 +5039,7 @@ impl<'a> Parser<'a> {
             }
             Ok((token::special_idents::invalid, vec![], ast::ImplItemKind::Macro(m)))
         } else {
-            let (constness, unsafety, abi) = self.parse_fn_front_matter()?;
+            let (constness, unsafety, abi, async) = self.parse_fn_front_matter()?;
             let ident = self.parse_ident()?;
             let mut generics = self.parse_generics()?;
             let (explicit_self, decl) = self.parse_fn_decl_with_self(|p| {
@@ -5030,6 +5050,7 @@ impl<'a> Parser<'a> {
             Ok((ident, inner_attrs, ast::ImplItemKind::Method(ast::MethodSig {
                 generics: generics,
                 abi: abi,
+                async: async,
                 explicit_self: explicit_self,
                 unsafety: unsafety,
                 constness: constness,
@@ -5791,7 +5812,7 @@ impl<'a> Parser<'a> {
                 // EXTERN FUNCTION ITEM
                 let abi = opt_abi.unwrap_or(Abi::C);
                 let (ident, item_, extra_attrs) =
-                    self.parse_item_fn(Unsafety::Normal, Constness::NotConst, abi)?;
+                    self.parse_item_fn(Unsafety::Normal, Constness::NotConst, abi, Async::Disabled)?;
                 let last_span = self.last_span;
                 let item = self.mk_item(lo,
                                         last_span.hi,
@@ -5836,7 +5857,7 @@ impl<'a> Parser<'a> {
                 };
                 self.bump();
                 let (ident, item_, extra_attrs) =
-                    self.parse_item_fn(unsafety, Constness::Const, Abi::Rust)?;
+                    self.parse_item_fn(unsafety, Constness::Const, Abi::Rust, Async::Disabled)?;
                 let last_span = self.last_span;
                 let item = self.mk_item(lo,
                                         last_span.hi,
@@ -5897,11 +5918,27 @@ impl<'a> Parser<'a> {
                                     maybe_append(attrs, extra_attrs));
             return Ok(Some(item));
         }
+
+        if self.eat_keyword(keywords::Async) && self.look_ahead(1, |t| t.is_keyword(keywords::Fn)) {
+            // FUNCTION ITEM
+            self.bump();
+            let (ident, item_, extra_attrs) =
+                self.parse_item_fn(Unsafety::Normal, Constness::NotConst, Abi::Rust, Async::Enabled)?;
+            let last_span = self.last_span;
+            let item = self.mk_item(lo,
+                                    last_span.hi,
+                                    ident,
+                                    item_,
+                                    visibility,
+                                    maybe_append(attrs, extra_attrs));
+            return Ok(Some(item));
+        }
+
         if self.check_keyword(keywords::Fn) {
             // FUNCTION ITEM
             self.bump();
             let (ident, item_, extra_attrs) =
-                self.parse_item_fn(Unsafety::Normal, Constness::NotConst, Abi::Rust)?;
+                self.parse_item_fn(Unsafety::Normal, Constness::NotConst, Abi::Rust, Async::Disabled)?;
             let last_span = self.last_span;
             let item = self.mk_item(lo,
                                     last_span.hi,
@@ -5922,7 +5959,7 @@ impl<'a> Parser<'a> {
             };
             self.expect_keyword(keywords::Fn)?;
             let (ident, item_, extra_attrs) =
-                self.parse_item_fn(Unsafety::Unsafe, Constness::NotConst, abi)?;
+                self.parse_item_fn(Unsafety::Unsafe, Constness::NotConst, abi, Async::Disabled)?;
             let last_span = self.last_span;
             let item = self.mk_item(lo,
                                     last_span.hi,

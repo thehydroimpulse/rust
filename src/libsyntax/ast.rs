@@ -1343,6 +1343,7 @@ pub struct MutTy {
 pub struct MethodSig {
     pub unsafety: Unsafety,
     pub constness: Constness,
+    pub async: Async,
     pub abi: Abi,
     pub decl: P<FnDecl>,
     pub generics: Generics,
@@ -1563,6 +1564,7 @@ impl fmt::Debug for Ty {
 pub struct BareFnTy {
     pub unsafety: Unsafety,
     pub abi: Abi,
+    pub async: Async,
     pub lifetimes: Vec<LifetimeDef>,
     pub decl: P<FnDecl>
 }
@@ -1674,6 +1676,12 @@ pub enum Unsafety {
 pub enum Constness {
     Const,
     NotConst,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, RustcEncodable, RustcDecodable, Hash, Debug)]
+pub enum Async {
+    Enabled,
+    Disabled,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, RustcEncodable, RustcDecodable, Hash, Debug)]
@@ -1980,7 +1988,7 @@ pub enum ItemKind {
     /// A `const` item
     Const(P<Ty>, P<Expr>),
     /// A function declaration
-    Fn(P<FnDecl>, Unsafety, Constness, Abi, Generics, P<Block>),
+    Fn(P<FnDecl>, Unsafety, Constness, Abi, Async, Generics, P<Block>),
     /// A module
     Mod(Mod),
     /// An external module

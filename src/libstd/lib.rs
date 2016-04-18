@@ -343,6 +343,8 @@ pub use core::option;
 
 pub mod error;
 
+pub mod awaitable;
+
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use alloc::boxed;
 #[stable(feature = "rust1", since = "1.0.0")]

@@ -31,7 +31,7 @@ use codemap::Span;
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum FnKind<'a> {
     /// fn foo() or extern "Abi" fn foo()
-    ItemFn(Ident, &'a Generics, Unsafety, Constness, Abi, &'a Visibility),
+    ItemFn(Ident, &'a Generics, Unsafety, Constness, Abi, Async, &'a Visibility),
 
     /// fn foo(&self)
     Method(Ident, &'a MethodSig, Option<&'a Visibility>),
@@ -262,9 +262,9 @@ pub fn walk_item<'v, V: Visitor<'v>>(visitor: &mut V, item: &'v Item) {
             visitor.visit_ty(typ);
             visitor.visit_expr(expr);
         }
-        ItemKind::Fn(ref declaration, unsafety, constness, abi, ref generics, ref body) => {
+        ItemKind::Fn(ref declaration, unsafety, constness, abi, async, ref generics, ref body) => {
             visitor.visit_fn(FnKind::ItemFn(item.ident, generics, unsafety,
-                                            constness, abi, &item.vis),
+                                            constness, abi, async, &item.vis),
                              declaration,
                              body,
                              item.span,
@@ -548,7 +548,7 @@ pub fn walk_fn_decl<'v, V: Visitor<'v>>(visitor: &mut V, function_declaration: &
 pub fn walk_fn_kind<'v, V: Visitor<'v>>(visitor: &mut V,
                                         function_kind: FnKind<'v>) {
     match function_kind {
-        FnKind::ItemFn(_, generics, _, _, _, _) => {
+        FnKind::ItemFn(_, generics, _, _, _, _, _) => {
             visitor.visit_generics(generics);
         }
         FnKind::Method(_, ref sig, _) => {

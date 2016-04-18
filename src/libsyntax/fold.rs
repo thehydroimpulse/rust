@@ -390,9 +390,10 @@ pub fn noop_fold_ty<T: Folder>(t: P<Ty>, fld: &mut T) -> P<Ty> {
                 TyKind::Rptr(fld.fold_opt_lifetime(region), fld.fold_mt(mt))
             }
             TyKind::BareFn(f) => {
-                TyKind::BareFn(f.map(|BareFnTy {lifetimes, unsafety, abi, decl}| BareFnTy {
+                TyKind::BareFn(f.map(|BareFnTy {lifetimes, unsafety, async, abi, decl}| BareFnTy {
                     lifetimes: fld.fold_lifetime_defs(lifetimes),
                     unsafety: unsafety,
+                    async: async,
                     abi: abi,
                     decl: fld.fold_fn_decl(decl)
                 }))
@@ -903,12 +904,13 @@ pub fn noop_fold_item_kind<T: Folder>(i: ItemKind, folder: &mut T) -> ItemKind {
         ItemKind::Const(t, e) => {
             ItemKind::Const(folder.fold_ty(t), folder.fold_expr(e))
         }
-        ItemKind::Fn(decl, unsafety, constness, abi, generics, body) => {
+        ItemKind::Fn(decl, unsafety, constness, abi, async, generics, body) => {
             ItemKind::Fn(
                 folder.fold_fn_decl(decl),
                 unsafety,
                 constness,
                 abi,
+                async,
                 folder.fold_generics(generics),
                 folder.fold_block(body)
             )
@@ -1103,6 +1105,7 @@ pub fn noop_fold_method_sig<T: Folder>(sig: MethodSig, folder: &mut T) -> Method
     MethodSig {
         generics: folder.fold_generics(sig.generics),
         abi: sig.abi,
+        async: sig.async,
         explicit_self: folder.fold_explicit_self(sig.explicit_self),
         unsafety: sig.unsafety,
         constness: sig.constness,

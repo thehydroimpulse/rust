@@ -678,7 +678,7 @@ pub fn lower_item_kind(lctx: &LoweringContext, i: &ItemKind) -> hir::Item_ {
         ItemKind::Const(ref t, ref e) => {
             hir::ItemConst(lower_ty(lctx, t), lower_expr(lctx, e))
         }
-        ItemKind::Fn(ref decl, unsafety, constness, abi, ref generics, ref body) => {
+        ItemKind::Fn(ref decl, unsafety, constness, abi, async, ref generics, ref body) => {
             hir::ItemFn(lower_fn_decl(lctx, decl),
                         lower_unsafety(lctx, unsafety),
                         lower_constness(lctx, constness),

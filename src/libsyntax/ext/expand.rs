@@ -318,11 +318,11 @@ pub fn expand_item(it: P<ast::Item>, fld: &mut MacroExpander)
 /// Expand item_kind
 fn expand_item_kind(item: ast::ItemKind, fld: &mut MacroExpander) -> ast::ItemKind {
     match item {
-        ast::ItemKind::Fn(decl, unsafety, constness, abi, generics, body) => {
+        ast::ItemKind::Fn(decl, unsafety, constness, abi, async, generics, body) => {
             let (rewritten_fn_decl, rewritten_body)
                 = expand_and_rename_fn_decl_and_block(decl, body, fld);
             let expanded_generics = fold::noop_fold_generics(generics,fld);
-            ast::ItemKind::Fn(rewritten_fn_decl, unsafety, constness, abi,
+            ast::ItemKind::Fn(rewritten_fn_decl, unsafety, constness, abi, async,
                         expanded_generics, rewritten_body)
         }
         _ => noop_fold_item_kind(item, fld)
@@ -1126,6 +1126,7 @@ fn expand_and_rename_method(sig: ast::MethodSig, body: P<ast::Block>,
     (ast::MethodSig {
         generics: fld.fold_generics(sig.generics),
         abi: sig.abi,
+        async: sig.async,
         explicit_self: fld.fold_explicit_self(sig.explicit_self),
         unsafety: sig.unsafety,
         constness: sig.constness,
